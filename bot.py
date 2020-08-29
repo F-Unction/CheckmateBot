@@ -83,7 +83,7 @@ class Bot(object):
                 stype.pop(0)
                 if p.find(" unshown ") != -1:
                     self.mpType[i + 1][j + 1] = -1
-                elif p.find(" city ") != -1:
+                elif p.find(" city ") != -1 or p.find(" empty-city ") != -1:
                     self.mpType[i + 1][j + 1] = 5
                 elif p.find(" crown ") != -1:
                     self.mpType[i + 1][j + 1] = 2
