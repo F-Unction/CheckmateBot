@@ -249,7 +249,9 @@ class Bot(object):
             return
         if cnt >= self.ansLen:
             return
-        for i in range(4):
+        tmpI = [0, 1, 2, 3]
+        random.shuffle(tmpI)
+        for i in tmpI:
             if self.endTag:
                 return
             px = x + self.di[i][0]
@@ -315,10 +317,13 @@ class Bot(object):
             return
         if self.mpBelong[x][y] == 2:
             return
-        if [x, y] in self.homes:
-            self.homes.remove([x, y])
+        self.homes = []
         if self.mpType[x][y] == 2 and self.mpBelong[x][y] == 1:
             self.Pr('Z')
+        for i in range(self.size):
+            for j in range(self.size):
+                if self.mpType[i + 1][j + 1] == 2 and self.mpBelong[i + 1][j + 1] == 2:
+                    self.homes.append([i + 1, j + 1])
         if len(self.homes) > 0 and random.randint(1, 10) == 1 and self.mpTmp[x][y] > 30:
             g = random.randint(0, len(self.homes) - 1)
             self.Attack(x, y, self.homes[g][0], self.homes[g][1])
@@ -335,8 +340,6 @@ class Bot(object):
                 if self.mpBelong[px][py] == 2:
                     if self.mpType[px][py] == 2:
                         currentTmp = 10
-                        if not([px, py] in self.homes):
-                            self.homes.append([px, py])
                     elif self.mpType[px][py] == 5:
                         currentTmp = 8
                     elif self.mpType[px][py] == 3:
