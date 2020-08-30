@@ -262,10 +262,12 @@ class Bot(object):
                 #print(i, x, y)
                 self.dfsRoute(px, py, ex, ey, cnt + 1)
                 self.tmpQ.remove([i, x, y])
+                if random.randint(0, 10) >= 2:
+                    self.tmpVis[px][py] = False
         return
 
     def Attack(self, x, y, ex, ey):
-        self.tmpQ = []
+        self.tmpQ = copy.deepcopy([])
         self.route = []
         self.endTag = False
         self.tmpVis = [[False for i in range(25)] for j in range(25)]
@@ -317,13 +319,14 @@ class Bot(object):
             return
         if self.mpBelong[x][y] == 2:
             return
-        self.homes = []
         if self.mpType[x][y] == 2 and self.mpBelong[x][y] == 1:
             self.Pr('Z')
         for i in range(self.size):
             for j in range(self.size):
-                if self.mpType[i + 1][j + 1] == 2 and self.mpBelong[i + 1][j + 1] == 2:
+                if self.mpType[i + 1][j + 1] == 2 and self.mpBelong[i + 1][j + 1] == 2 and (not ([i + 1, j + 1] in self.homes)):
                     self.homes.append([i + 1, j + 1])
+        if [x, y] in self.homes:
+            self.homes.remove([x, y])
         if len(self.homes) > 0 and random.randint(1, 10) == 1 and self.mpTmp[x][y] > 30:
             g = random.randint(0, len(self.homes) - 1)
             self.Attack(x, y, self.homes[g][0], self.homes[g][1])
