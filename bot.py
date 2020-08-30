@@ -253,6 +253,8 @@ class Bot(object):
             return
         if self.mpBelong[x][y] == 2:
             return
+        if self.mpType[x][y] == 2 and self.mpBelong[x][y] == 1:
+            self.Pr('Z')
         ansTmp = 0
         ansI = -1
         tmpI = [0, 1, 2, 3]
