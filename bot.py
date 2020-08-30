@@ -2,6 +2,7 @@ import random
 import re
 import threading
 import time
+import copy
 from time import sleep
 
 from selenium import webdriver
@@ -36,7 +37,13 @@ class Bot(object):
         self.error = False
         self.vis = [[False for i in range(25)] for j in range(25)]  # 是否走过
         self.sx = self.sy = 0  # 家的位置
+        self.homes = []  # 敌人的家
         self.size = 20
+        self.tmpQ = []
+        self.tmpVis = [[False for i in range(25)] for j in range(25)]
+        self.route = []  # 进攻路线
+        self.endTag = False
+        self.ansLen = 100000
 
     def SendKeyToTable(self, key):
         ac = ActionChains(self.driver)
@@ -81,13 +88,11 @@ class Bot(object):
             for j in range(self.size):
                 p = stype[0]
                 stype.pop(0)
-                if p.find(" unshown ") != -1:
-                    self.mpType[i + 1][j + 1] = -1
-                elif p.find(" city ") != -1 or p.find(" empty-city ") != -1:
+                if p.find(" city ") != -1 or p.find(" empty-city ") != -1:
                     self.mpType[i + 1][j + 1] = 5
                 elif p.find(" crown ") != -1:
                     self.mpType[i + 1][j + 1] = 2
-                elif p.find(" mountain ") != -1:
+                elif p.find(" mountain ") != -1 or p.find(" obstacle ") != -1:
                     self.mpType[i + 1][j + 1] = 1
                 elif p.find(" gas ") != -1:
                     self.mpType[i + 1][j + 1] = 1
@@ -95,6 +100,8 @@ class Bot(object):
                     self.mpType[i + 1][j + 1] = 0
                 elif p.find(" null ") != -1 and p.find(" grey ") == -1:
                     self.mpType[i + 1][j + 1] = 3
+                else:
+                    self.mpType[i + 1][j + 1] = -1
                 if p.find(" own ") != -1:
                     self.mpBelong[i + 1][j + 1] = 1
                 else:
@@ -232,6 +239,61 @@ class Bot(object):
         self.selectLand(self.sx, self.sy)
         return
 
+    def dfsRoute(self, x, y, ex, ey, cnt):
+        if x == ex and y == ey and cnt < self.ansLen:
+            self.ansLen = cnt
+            self.route = copy.deepcopy(self.tmpQ)
+            # print("finished")
+            # print(self.tmpQ)
+            # print(cnt)
+            return
+        if cnt >= self.ansLen:
+            return
+        for i in range(4):
+            if self.endTag:
+                return
+            px = x + self.di[i][0]
+            py = y + self.di[i][1]
+            if px >= 1 and px <= self.size and py >= 1 and py <= self.size and (not self.tmpVis[px][py]) and self.mpType[px][py] != 1:
+                self.tmpVis[px][py] = True
+                self.tmpQ.append([i, x, y])
+                #print(i, x, y)
+                self.dfsRoute(px, py, ex, ey, cnt + 1)
+                self.tmpQ.remove([i, x, y])
+        return
+
+    def Attack(self, x, y, ex, ey):
+        self.tmpQ = []
+        self.route = []
+        self.endTag = False
+        self.tmpVis = [[False for i in range(25)] for j in range(25)]
+        self.tmpVis[x][y] = True
+        self.ansLen = 10000
+        #print("attack, ", ex, ey)
+        self.dfsRoute(x, y, ex, ey, 0)
+        #print(self.route, self.ansLen)
+        if len(self.route) < 1:
+            return
+        for p in self.route:
+            i = p[0]
+            self.getMap()
+            if x < 1 or y < 1 or x > self.size or y > self.size or self.mpBelong[x][y] == 2 or self.mpTmp[x][y] < 2:
+                return
+            if i == 0:
+                self.Pr('W')
+                x -= 1
+            elif i == 1:
+                self.Pr('D')
+                y += 1
+            elif i == 2:
+                self.Pr('S')
+                x += 1
+            else:
+                self.Pr('A')
+                y -= 1
+            sleep(0.25)
+        return
+
     def botMove(self):
         sleep(0.25)
         x = 0
@@ -253,8 +315,14 @@ class Bot(object):
             return
         if self.mpBelong[x][y] == 2:
             return
+        if [x, y] in self.homes:
+            self.homes.remove([x, y])
         if self.mpType[x][y] == 2 and self.mpBelong[x][y] == 1:
             self.Pr('Z')
+        if len(self.homes) > 0 and random.randint(1, 10) == 1 and self.mpTmp[x][y] > 30:
+            g = random.randint(0, len(self.homes) - 1)
+            self.Attack(x, y, self.homes[g][0], self.homes[g][1])
+            return
         ansTmp = 0
         ansI = -1
         tmpI = [0, 1, 2, 3]
@@ -267,6 +335,8 @@ class Bot(object):
                 if self.mpBelong[px][py] == 2:
                     if self.mpType[px][py] == 2:
                         currentTmp = 10
+                        if not([px, py] in self.homes):
+                            self.homes.append([px, py])
                     elif self.mpType[px][py] == 5:
                         currentTmp = 8
                     elif self.mpType[px][py] == 3:
@@ -302,7 +372,7 @@ class Bot(object):
         while True:
             if self.isAutoReady:
                 self.Ready()
-            self.Pr('F') # 防踢
+            self.Pr('F')  # 防踢
             self.getMap()
             self.sx = 0
             self.sy = 0
