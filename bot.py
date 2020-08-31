@@ -240,30 +240,69 @@ class Bot(object):
         return
 
     def dfsRoute(self, x, y, ex, ey, cnt):
-        if x == ex and y == ey and cnt < self.ansLen:
-            self.ansLen = cnt
-            self.route = copy.deepcopy(self.tmpQ)
-            # print("finished")
-            # print(self.tmpQ)
-            # print(cnt)
-            return
-        if cnt >= self.ansLen:
-            return
-        tmpI = [0, 1, 2, 3]
-        random.shuffle(tmpI)
-        for i in tmpI:
-            if self.endTag:
-                return
-            px = x + self.di[i][0]
-            py = y + self.di[i][1]
-            if px >= 1 and px <= self.size and py >= 1 and py <= self.size and (not self.tmpVis[px][py]) and self.mpType[px][py] != 1:
-                self.tmpVis[px][py] = True
-                self.tmpQ.append([i, x, y])
-                #print(i, x, y)
-                self.dfsRoute(px, py, ex, ey, cnt + 1)
-                self.tmpQ.remove([i, x, y])
-                if random.randint(0, 10) >= 2:
-                    self.tmpVis[px][py] = False
+        # if x == ex and y == ey:
+        #     if cnt < self.ansLen:
+        #         self.ansLen = cnt
+        #         self.route = copy.deepcopy(self.tmpQ)
+        #         # print("finished")
+        #         # print(self.tmpQ)
+        #         # print(cnt)
+        #     return
+        # if cnt >= self.ansLen:
+        #     return
+        # tmpI = [0, 1, 2, 3]
+        # random.shuffle(tmpI)
+        # for i in tmpI:
+        #     if self.endTag:
+        #         return
+        #     px = x + self.di[i][0]
+        #     py = y + self.di[i][1]
+        #     if px >= 1 and px <= self.size and py >= 1 and py <= self.size and (not self.tmpVis[px][py]) and self.mpType[px][py] != 1:
+        #         self.tmpVis[px][py] = True
+        #         self.tmpQ.append([i, x, y])
+        #         #print(i, x, y)
+        #         self.dfsRoute(px, py, ex, ey, cnt + 1)
+        #         self.tmpQ.remove([i, x, y])
+        #         if random.randint(0, 10) >= 1:
+        #             self.tmpVis[px][py] = False
+        queue = []
+        pre = [[[0, 0, 0] for i in range(25)] for j in range(25)]
+        anspre = [[[0, 0, 0] for i in range(25)] for j in range(25)]
+        queue.append([x, y, 0])
+        while len(queue) > 0:
+            curx = queue[0][0]
+            cury = queue[0][1]
+            curcnt = queue[0][2]
+            #print(curx, cury, curcnt)
+            queue.pop(0)
+            if curx == ex and cury == ey:
+                if curcnt < self.ansLen:
+                    self.ansLen = curcnt
+                    anspre = copy.deepcopy(pre)
+                continue
+            if curcnt >= self.ansLen:
+                continue
+            for i in range(4):
+                px = curx + self.di[i][0]
+                py = cury + self.di[i][1]
+                if px >= 1 and px <= self.size and py >= 1 and py <= self.size and (not self.tmpVis[px][py]) and self.mpType[px][py] != 1:
+                    self.tmpVis[px][py] = True
+                    queue.append([px, py, curcnt + 1])
+                    pre[px][py] = [i, curx, cury]
+                    # if random.randint(0, 10) >= 1:
+                    #     self.tmpVis[px][py] = False
+        #print(anspre)
+        #print(self.ansLen)
+        nx = ex
+        ny = ey
+        while nx != x or ny != y:
+            if anspre[nx][ny] == [0, 0, 0]:
+                break
+            self.route.append(anspre[nx][ny][0])
+            # print(self.route)
+            nx = anspre[nx][ny][1]
+            ny = anspre[nx][ny][2]
+        self.route.reverse()
         return
 
     def Attack(self, x, y, ex, ey):
@@ -273,14 +312,15 @@ class Bot(object):
         self.tmpVis = [[False for i in range(25)] for j in range(25)]
         self.tmpVis[x][y] = True
         self.ansLen = 10000
-        #print("attack, ", ex, ey)
+        print("attack, ", ex, ey)
         self.dfsRoute(x, y, ex, ey, 0)
-        #print(self.route, self.ansLen)
+        print(self.route, self.ansLen)
         if len(self.route) < 1:
             return
         for p in self.route:
-            i = p[0]
+            i = p
             self.getMap()
+            print("moving...")
             if x < 1 or y < 1 or x > self.size or y > self.size or self.mpBelong[x][y] == 2 or self.mpTmp[x][y] < 2:
                 return
             if i == 0:
@@ -379,6 +419,7 @@ class Bot(object):
             if self.isAutoReady:
                 self.Ready()
             self.Pr('F')  # 防踢
+            self.homes = []
             self.getMap()
             self.sx = 0
             self.sy = 0
