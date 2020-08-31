@@ -251,19 +251,26 @@ class Bot(object):
             return
         tmpI = [0, 1, 2, 3]
         random.shuffle(tmpI)
+        ansI = 0
+        ansDis = 10000
         for i in tmpI:
             if self.endTag:
                 return
             px = x + self.di[i][0]
             py = y + self.di[i][1]
             if px >= 1 and px <= self.size and py >= 1 and py <= self.size and (not self.tmpVis[px][py]) and self.mpType[px][py] != 1:
-                self.tmpVis[px][py] = True
-                self.tmpQ.append([i, x, y])
-                #print(i, x, y)
-                self.dfsRoute(px, py, ex, ey, cnt + 1)
-                self.tmpQ.remove([i, x, y])
-                if random.randint(0, 10) >= 2:
-                    self.tmpVis[px][py] = False
+                if abs(px - ex) + abs(py - ey) < ansDis:
+                    ansDis = abs(px - ex) + abs(py - ey)
+                    ansI = i
+        px = x + self.di[ansI][0]
+        py = y + self.di[ansI][1]
+        self.tmpVis[px][py] = True
+        self.tmpQ.append([ansI, x, y])
+        #print(i, x, y)
+        self.dfsRoute(px, py, ex, ey, cnt + 1)
+        self.tmpQ.remove([ansI, x, y])
+        if random.randint(0, 10) >= 2:
+            self.tmpVis[px][py] = False
         return
 
     def Attack(self, x, y, ex, ey):
@@ -273,9 +280,9 @@ class Bot(object):
         self.tmpVis = [[False for i in range(25)] for j in range(25)]
         self.tmpVis[x][y] = True
         self.ansLen = 10000
-        #print("attack, ", ex, ey)
+        print("attack, ", ex, ey)
         self.dfsRoute(x, y, ex, ey, 0)
-        #print(self.route, self.ansLen)
+        print(self.route, self.ansLen)
         if len(self.route) < 1:
             return
         for p in self.route:
