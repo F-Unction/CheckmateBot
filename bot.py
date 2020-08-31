@@ -12,6 +12,7 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
+from selenium.webdriver.common.keys import Keys
 
 
 class Bot(object):
@@ -44,6 +45,7 @@ class Bot(object):
         self.route = []  # 进攻路线
         self.endTag = False
         self.ansLen = 100000
+        self.freeTime = 0 # 空闲时间
 
     def SendKeyToTable(self, key):
         ac = ActionChains(self.driver)
@@ -125,6 +127,13 @@ class Bot(object):
         except:
             return
 
+    def sendMessage(self, msg):  # 发送消息
+        messageBox = self.driver.find_element_by_id("msg-sender")
+        ac = ActionChains(self.driver)
+        ac.send_keys_to_element(messageBox, msg)
+        ac.send_keys(Keys.ENTER).perform()
+        return
+
     def Login(self):
         """
             登录，如果出现异常则在5S后退出
@@ -193,6 +202,8 @@ class Bot(object):
 
     def Pr(self, c):
         self.SendKeyToTable(c)
+        if c != "F":
+            self.freeTime = 0
         # print(c)
         return
 
@@ -382,12 +393,17 @@ class Bot(object):
     def Main(self):
         self.Login()
         self.EnterRoom()
+        self.freeTime = 0
         self.table = self.driver.find_element_by_tag_name("tbody")
         while True:
             if self.isAutoReady:
                 self.Ready()
             self.Pr('F')  # 防踢
             self.getMap()
+            self.freeTime += 1
+            #print(self.freeTime)
+            if self.freeTime % 60 == 59:
+                self.sendMessage('欢迎来<a href="' + "https://kana.byha.top:444/checkmate/room/" + self.roomId + '">' + self.roomId + '</a>玩')
             self.sx = 0
             self.sy = 0
             for i in range(self.size):
