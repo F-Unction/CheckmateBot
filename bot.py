@@ -264,13 +264,14 @@ class Bot(object):
                     ansI = i
         px = x + self.di[ansI][0]
         py = y + self.di[ansI][1]
-        self.tmpVis[px][py] = True
-        self.tmpQ.append([ansI, x, y])
-        #print(i, x, y)
-        self.dfsRoute(px, py, ex, ey, cnt + 1)
-        self.tmpQ.remove([ansI, x, y])
-        if random.randint(0, 10) >= 2:
-            self.tmpVis[px][py] = False
+        if px >= 1 and px <= self.size and py >= 1 and py <= self.size and (not self.tmpVis[px][py]) and self.mpType[px][py] != 1:
+            self.tmpVis[px][py] = True
+            self.tmpQ.append([ansI, x, y])
+            #print(i, x, y)
+            self.dfsRoute(px, py, ex, ey, cnt + 1)
+            self.tmpQ.remove([ansI, x, y])
+            if random.randint(0, 10) >= 2:
+                self.tmpVis[px][py] = False
         return
 
     def Attack(self, x, y, ex, ey):
