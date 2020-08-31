@@ -335,7 +335,7 @@ class Bot(object):
                     self.homes.append([i + 1, j + 1])
         if [x, y] in self.homes:
             self.homes.remove([x, y])
-        if len(self.homes) > 0 and random.randint(1, 10) == 1 and self.mpTmp[x][y] > 30:
+        if len(self.homes) > 0 and random.randint(1, 5) == 1 and self.mpTmp[x][y] > 30:
             g = random.randint(0, len(self.homes) - 1)
             self.Attack(x, y, self.homes[g][0], self.homes[g][1])
             return
