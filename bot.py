@@ -46,6 +46,7 @@ class Bot(object):
         self.endTag = False
         self.ansLen = 100000
         self.freeTime = 0 # 空闲时间
+        self.TIME_PER_TURN = 0.24 # 每回合的等待时间
 
     def SendKeyToTable(self, key):
         ac = ActionChains(self.driver)
@@ -314,11 +315,11 @@ class Bot(object):
             else:
                 self.Pr('A')
                 y -= 1
-            sleep(0.25)
+            sleep(self.TIME_PER_TURN)
         return
 
     def botMove(self):
-        sleep(0.25)
+        sleep(self.TIME_PER_TURN)
         x = 0
         y = 0
         tryTime = 0
@@ -402,7 +403,7 @@ class Bot(object):
             self.getMap()
             self.freeTime += 1
             #print(self.freeTime)
-            if self.freeTime % 60 == 59:
+            if self.freeTime % 120 == 119:
                 self.sendMessage('欢迎来<a href="' + "https://kana.byha.top:444/checkmate/room/" + self.roomId + '">' + self.roomId + '</a>玩')
             self.sx = 0
             self.sy = 0
