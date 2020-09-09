@@ -406,7 +406,7 @@ class Bot(object):
             if self.freeTime % 120 == 119:
                 self.sendMessage('欢迎来<a href="' + "https://kana.byha.top:444/checkmate/room/" + self.roomId + '">' + self.roomId + '</a>玩')
             checkBox = self.driver.find_element_by_class_name("form-check-input") # 防私密
-            if checkBox.is_selected():
+            if (checkBox.is_selected() and not(self.isSecret)):
                 checkBox.click()
             self.sx = 0
             self.sy = 0
