@@ -23,13 +23,13 @@ class Bot(object):
 
     def __init__(self, username, password, roomId, isSecret=False, isAutoReady=True):
         self.kanaLink = "https://kana.byha.top:444/"
-        self.driver = webdriver.Chrome()    # 浏览器
+        self.driver = webdriver.Chrome()  # 浏览器
         # self.driver = webdriver.Firefox()
-        self.username = username    # 用户名
-        self.password = password    # 密码
-        self.roomId = roomId    # 房间号
-        self.isSecret = isSecret    # 是否为私密房间
-        self.isAutoReady = isAutoReady    # 是否主动准备
+        self.username = username  # 用户名
+        self.password = password  # 密码
+        self.roomId = roomId  # 房间号
+        self.isSecret = isSecret  # 是否为私密房间
+        self.isAutoReady = isAutoReady  # 是否主动准备
         self.mpType = [[0 for i in range(25)] for j in range(25)]  # 属性地图
         self.mpTmp = [[0 for i in range(25)] for j in range(25)]  # 兵力地图
         self.mpBelong = [[0 for i in range(25)] for j in range(25)]  # 颜色地图
@@ -45,8 +45,8 @@ class Bot(object):
         self.route = []  # 进攻路线
         self.endTag = False
         self.ansLen = 100000
-        self.freeTime = 0 # 空闲时间
-        self.TIME_PER_TURN = 0.24 # 每回合的等待时间
+        self.freeTime = 0  # 空闲时间
+        self.TIME_PER_TURN = 0.24  # 每回合的等待时间
 
     def SendKeyToTable(self, key):
         ac = ActionChains(self.driver)
@@ -85,7 +85,7 @@ class Bot(object):
             g = g[1:len(g) - 1]
             stmp.append(g)
         self.size = int(cnt ** 0.5)
-        if not(self.size == 9 or self.size == 10 or self.size == 19 or self.size == 20):
+        if not (self.size == 9 or self.size == 10 or self.size == 19 or self.size == 20):
             return
         for i in range(self.size):
             for j in range(self.size):
@@ -270,16 +270,18 @@ class Bot(object):
                 return
             px = x + self.di[i][0]
             py = y + self.di[i][1]
-            if px >= 1 and px <= self.size and py >= 1 and py <= self.size and (not self.tmpVis[px][py]) and self.mpType[px][py] != 1:
+            if px >= 1 and px <= self.size and py >= 1 and py <= self.size and (not self.tmpVis[px][py]) and \
+                    self.mpType[px][py] != 1:
                 if abs(px - ex) + abs(py - ey) < ansDis:
                     ansDis = abs(px - ex) + abs(py - ey)
                     ansI = i
         px = x + self.di[ansI][0]
         py = y + self.di[ansI][1]
-        if px >= 1 and px <= self.size and py >= 1 and py <= self.size and (not self.tmpVis[px][py]) and self.mpType[px][py] != 1:
+        if px >= 1 and px <= self.size and py >= 1 and py <= self.size and (not self.tmpVis[px][py]) and \
+                self.mpType[px][py] != 1:
             self.tmpVis[px][py] = True
             self.tmpQ.append([ansI, x, y])
-            #print(i, x, y)
+            # print(i, x, y)
             self.dfsRoute(px, py, ex, ey, cnt + 1)
             self.tmpQ.remove([ansI, x, y])
             if random.randint(0, 10) >= 2:
@@ -331,7 +333,7 @@ class Bot(object):
             y = self.q[0][1]
             tryTime += 1
             self.q.pop(0)
-            if not(self.mpTmp[x][y] <= 1 and self.mpType[x][y] != 2 and tryTime <= 10):
+            if not (self.mpTmp[x][y] <= 1 and self.mpType[x][y] != 2 and tryTime <= 10):
                 break
         if tryTime > 10:
             return
@@ -343,7 +345,8 @@ class Bot(object):
             self.Pr('Z')
         for i in range(self.size):
             for j in range(self.size):
-                if self.mpType[i + 1][j + 1] == 2 and self.mpBelong[i + 1][j + 1] == 2 and (not ([i + 1, j + 1] in self.homes)):
+                if self.mpType[i + 1][j + 1] == 2 and self.mpBelong[i + 1][j + 1] == 2 and (
+                not ([i + 1, j + 1] in self.homes)):
                     self.homes.append([i + 1, j + 1])
         if [x, y] in self.homes:
             self.homes.remove([x, y])
@@ -358,7 +361,8 @@ class Bot(object):
         for i in tmpI:
             px = x + self.di[i][0]
             py = y + self.di[i][1]
-            if px >= 1 and px <= self.size and py >= 1 and py <= self.size and self.mpType[px][py] != 1 and (not self.vis[px][py]) and (self.mpType[px][py] != 5 or self.mpTmp[x][y] > self.mpTmp[px][py]):
+            if px >= 1 and px <= self.size and py >= 1 and py <= self.size and self.mpType[px][py] != 1 and (
+            not self.vis[px][py]) and (self.mpType[px][py] != 5 or self.mpTmp[x][y] > self.mpTmp[px][py]):
                 currentTmp = 0
                 if self.mpBelong[px][py] == 2:
                     if self.mpType[px][py] == 2:
@@ -402,12 +406,18 @@ class Bot(object):
             self.Pr('F')  # 防踢
             self.getMap()
             self.freeTime += 1
-            #print(self.freeTime)
+            # print(self.freeTime)
             if self.freeTime % 120 == 119:
-                self.sendMessage('欢迎来<a href="' + "https://kana.byha.top:444/checkmate/room/" + self.roomId + '">' + self.roomId + '</a>玩')
-            checkBox = self.driver.find_element_by_class_name("form-check-input") # 防私密
-            if (checkBox.is_selected() and not(self.isSecret)):
+                self.sendMessage(
+                    '欢迎来<a href="' + "https://kana.byha.top:444/checkmate/room/" + self.roomId + '">' + self.roomId + '</a>玩')
+            checkBox = self.driver.find_element_by_class_name("form-check-input")  # 防私密
+            if (checkBox.is_selected() and not (self.isSecret)):
                 checkBox.click()
+            try:
+                randomBtn = self.driver.find_element_by_css_selector('[data="1"]')
+                randomBtn.click()
+            except:
+                pass
             self.sx = 0
             self.sy = 0
             for i in range(self.size):
