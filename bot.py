@@ -52,6 +52,9 @@ class Bot(object):
         ac = ActionChains(self.driver)
         ac.send_keys(key).perform()
 
+    def dist(self, xx1, yy1, xx2, yy2):
+        return abs(xx1 - xx2) + abs(yy1 - yy2)
+
     # https://blog.csdn.net/weixin_42107267/article/details/93198343
     def isElementExist(self, element):
         try:
@@ -109,6 +112,9 @@ class Bot(object):
                     self.mpBelong[i + 1][j + 1] = 1
                 else:
                     self.mpBelong[i + 1][j + 1] = 2
+                if self.mpType[i + 1][j + 1] == 2 and self.mpBelong[i + 1][j + 1] == 1:
+                    self.sx = i + 1
+                    self.sy = j + 1
                 p = stmp[0]
                 stmp.pop(0)
                 try:
@@ -320,6 +326,13 @@ class Bot(object):
             sleep(self.TIME_PER_TURN)
         return
 
+    def checkHome(self):
+        for i in range(self.sx - 1, self.sx + 1):
+            for j in range(self.sy - 1, self.sy + 1):
+                if i > 0 and i <= self.size and j > 0 and j <= self.size and self.mpBelong[i][j] == 2 and self.mpType[i][j] == 3:
+                    return True
+        return False
+
     def botMove(self):
         sleep(self.TIME_PER_TURN)
         x = 0
@@ -346,13 +359,17 @@ class Bot(object):
         for i in range(self.size):
             for j in range(self.size):
                 if self.mpType[i + 1][j + 1] == 2 and self.mpBelong[i + 1][j + 1] == 2 and (
-                not ([i + 1, j + 1] in self.homes)):
+                        not ([i + 1, j + 1] in self.homes)):
                     self.homes.append([i + 1, j + 1])
         if [x, y] in self.homes:
             self.homes.remove([x, y])
         if len(self.homes) > 0 and random.randint(1, 5) == 1 and self.mpTmp[x][y] > 30:
             g = random.randint(0, len(self.homes) - 1)
             self.Attack(x, y, self.homes[g][0], self.homes[g][1])
+            return
+        if self.mpTmp[x][y] > 20 and self.dist(x, y, self.sx, self.sy) >= 4 and self.checkHome():
+            print("Defend")
+            self.Attack(x, y, self.sx, self.sy)
             return
         ansTmp = 0
         ansI = -1
@@ -362,7 +379,7 @@ class Bot(object):
             px = x + self.di[i][0]
             py = y + self.di[i][1]
             if px >= 1 and px <= self.size and py >= 1 and py <= self.size and self.mpType[px][py] != 1 and (
-            not self.vis[px][py]) and (self.mpType[px][py] != 5 or self.mpTmp[x][y] > self.mpTmp[px][py]):
+                    not self.vis[px][py]) and (self.mpType[px][py] != 5 or self.mpTmp[x][y] > self.mpTmp[px][py]):
                 currentTmp = 0
                 if self.mpBelong[px][py] == 2:
                     if self.mpType[px][py] == 2:
@@ -407,11 +424,11 @@ class Bot(object):
             self.getMap()
             self.freeTime += 1
             # print(self.freeTime)
-            if self.freeTime % 120 == 119:
+            if self.freeTime % 120 == 119 and not(self.isSecret):
                 self.sendMessage(
                     '欢迎来<a href="' + "https://kana.byha.top:444/checkmate/room/" + self.roomId + '">' + self.roomId + '</a>玩')
             checkBox = self.driver.find_element_by_class_name("form-check-input")  # 防私密
-            if (checkBox.is_selected() and not (self.isSecret)):
+            if (checkBox.is_selected() and not self.isSecret) or(not(checkBox.is_selected()) and self.isSecret):
                 checkBox.click()
             try:
                 randomBtn = self.driver.find_element_by_css_selector('[data="1"]')
@@ -438,5 +455,7 @@ print("输入密码：")
 t2 = input()
 print("输入房间号：")
 t3 = input()
-a = Bot(t1, t2, t3)
+print("是否私密？(Y/N)")
+t4 = input()
+a = Bot(t1, t2, t3, t4 == "Y")
 a.Main()
