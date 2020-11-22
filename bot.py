@@ -65,9 +65,9 @@ class Bot(object):
             return False
 
     def getMap(self):  # 获得地图
-        self.mpType = [[0 for i in range(25)] for j in range(25)]
-        self.mpTmp = [[0 for i in range(25)] for j in range(25)]
-        self.mpBelong = [[0 for i in range(25)] for j in range(25)]
+        # self.mpType = [[0 for i in range(25)] for j in range(25)]
+        # self.mpTmp = [[0 for i in range(25)] for j in range(25)]
+        # self.mpBelong = [[0 for i in range(25)] for j in range(25)]
         s = self.driver.find_element_by_id("m").get_attribute("innerHTML")
         stype = []
         stmp = []
@@ -190,18 +190,20 @@ class Bot(object):
         try:
             self.userCount = int(
                 self.driver.find_element_by_id("total-user").text)
-        except ValueError:
+        except:
             self.userCount = 3
-        ac = ActionChains(self.driver)
-        ac.click(self.driver.find_element_by_id("ready")).perform()
-
-        try:
-            WebDriverWait(self.driver, 300).until(
-                EC.visibility_of_element_located((By.TAG_NAME, "tbody")))
-        except TimeoutException:
-            print("房间内无人开始，过一会再试试吧")
-            sleep(5)
-            self.Kill()
+        if self.userCount >= 3:
+            ac = ActionChains(self.driver)
+            ac.click(self.driver.find_element_by_id("ready")).perform()
+            try:
+                WebDriverWait(self.driver, 300).until(
+                    EC.visibility_of_element_located((By.TAG_NAME, "tbody")))
+            except TimeoutException:
+                print("房间内无人开始，过一会再试试吧")
+                sleep(5)
+                self.Kill()
+        else:
+            sleep(1)
 
     def Kill(self):
         self.driver.close()
