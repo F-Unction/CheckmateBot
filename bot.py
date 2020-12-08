@@ -55,20 +55,25 @@ class Bot(object):
     def dist(self, xx1, yy1, xx2, yy2):
         return abs(xx1 - xx2) + abs(yy1 - yy2)
 
-    # https://blog.csdn.net/weixin_42107267/article/details/93198343
-    def isElementExist(self, element):
+    def EnterRoom(self):
+        """
+        进入指定房间
+        :return:
+        """
+        self.driver.get(
+            "https://kana.byha.top:444/checkmate/room/" + self.roomId)
+        if self.isSecret:
+            settingBtn = self.driver.find_element_by_class_name(
+                "form-check-input")
+            ac = ActionChains(self.driver)
+            ac.click(settingBtn).perform()
+        print("Bot已就位！")
+
+    def GetMap(self):  # 获得地图
         try:
-            self.driver.find_element_by_id(element)
-            return True
-
+            s = self.driver.find_element_by_id("m").get_attribute("innerHTML")
         except:
-            return False
-
-    def getMap(self):  # 获得地图
-        # self.mpType = [[0 for i in range(25)] for j in range(25)]
-        # self.mpTmp = [[0 for i in range(25)] for j in range(25)]
-        # self.mpBelong = [[0 for i in range(25)] for j in range(25)]
-        s = self.driver.find_element_by_id("m").get_attribute("innerHTML")
+            return
         stype = []
         stmp = []
         cnt = 0
@@ -121,12 +126,9 @@ class Bot(object):
                     self.mpTmp[i + 1][j + 1] = int(p)
                 except:
                     self.mpTmp[i + 1][j + 1] = 0
-                # print(self.mpType[i + 1][j + 1])
-                # print(self.mpBelong[i + 1][j + 1])
-                # print(self.mpTmp[i + 1][j + 1])
         return
 
-    def selectLand(self, x, y):  # 选择土地
+    def SelectLand(self, x, y):  # 选择土地
         try:
             self.driver.find_element_by_id(
                 "td-" + str((x - 1) * self.size + y)).click()
@@ -167,43 +169,18 @@ class Bot(object):
             self.driver.close()
             del self
 
-    def EnterRoom(self):
-        """
-        进入指定房间
-        :return:
-        """
-        self.driver.get(
-            "https://kana.byha.top:444/checkmate/room/" + self.roomId)
-        if self.isSecret:
-            settingBtn = self.driver.find_element_by_class_name(
-                "form-check-input")
-            ac = ActionChains(self.driver)
-            ac.click(settingBtn).perform()
-        print("Bot已就位！")
-
     def Ready(self):
-        """
-        准备开始，如果300秒未开始，程序退出
-        :return:
-        """
-        # sleep(1)
         try:
             self.userCount = int(
                 self.driver.find_element_by_id("total-user").text)
         except:
-            self.userCount = 3
-        if self.userCount >= 3:
+            self.userCount = 2
+            return
+        try:
             ac = ActionChains(self.driver)
             ac.click(self.driver.find_element_by_id("ready")).perform()
-            try:
-                WebDriverWait(self.driver, 300).until(
-                    EC.visibility_of_element_located((By.TAG_NAME, "tbody")))
-            except TimeoutException:
-                print("房间内无人开始，过一会再试试吧")
-                sleep(5)
-                self.Kill()
-        else:
-            sleep(1)
+        except:
+            return
 
     def Kill(self):
         self.driver.close()
@@ -213,10 +190,9 @@ class Bot(object):
         self.SendKeyToTable(c)
         if c != "F":
             self.freeTime = 0
-        # print(c)
         return
 
-    def isOutside(self, x, y):
+    def IsOutside(self, x, y):
         for i in range(4):
             px = x + self.di[i][0]
             py = y + self.di[i][1]
@@ -224,7 +200,7 @@ class Bot(object):
                 return True
         return False
 
-    def changeTarget(self):
+    def ChangeTarget(self):
         insideAnsTmp = self.mpTmp[self.sx][self.sy]
         insideAnsX = self.sx
         insideAnsY = self.sy
@@ -236,7 +212,7 @@ class Bot(object):
                 i = p + 1
                 j = q + 1
                 if self.mpBelong[i][j] == 1:
-                    if self.isOutside(i, j):
+                    if self.IsOutside(i, j):
                         if self.mpTmp[i][j] > outsideAnsTmp:
                             outsideAnsTmp = self.mpTmp[i][j]
                             outsideAnsX = i
@@ -256,7 +232,7 @@ class Bot(object):
         if random.randint(0, 1) == 1:
             self.vis = [[False for i in range(25)] for j in range(25)]
         self.vis[self.sx][self.sy] = True
-        self.selectLand(self.sx, self.sy)
+        self.SelectLand(self.sx, self.sy)
         return
 
     def dfsRoute(self, x, y, ex, ey, cnt):
@@ -278,14 +254,14 @@ class Bot(object):
                 return
             px = x + self.di[i][0]
             py = y + self.di[i][1]
-            if px >= 1 and px <= self.size and py >= 1 and py <= self.size and (not self.tmpVis[px][py]) and \
+            if 1 <= px <= self.size and 1 <= py <= self.size and (not self.tmpVis[px][py]) and \
                     self.mpType[px][py] != 1:
                 if abs(px - ex) + abs(py - ey) < ansDis:
                     ansDis = abs(px - ex) + abs(py - ey)
                     ansI = i
         px = x + self.di[ansI][0]
         py = y + self.di[ansI][1]
-        if px >= 1 and px <= self.size and py >= 1 and py <= self.size and (not self.tmpVis[px][py]) and \
+        if 1 <= px <= self.size and 1 <= py <= self.size and (not self.tmpVis[px][py]) and \
                 self.mpType[px][py] != 1:
             self.tmpVis[px][py] = True
             self.tmpQ.append([ansI, x, y])
@@ -310,7 +286,7 @@ class Bot(object):
             return
         for p in self.route:
             i = p[0]
-            self.getMap()
+            self.GetMap()
             if x < 1 or y < 1 or x > self.size or y > self.size or self.mpBelong[x][y] == 2 or self.mpTmp[x][y] < 2:
                 return
             if i == 0:
@@ -331,19 +307,42 @@ class Bot(object):
     def checkHome(self):
         for i in range(self.sx - 1, self.sx + 1):
             for j in range(self.sy - 1, self.sy + 1):
-                if i > 0 and i <= self.size and j > 0 and j <= self.size and self.mpBelong[i][j] == 2 and self.mpType[i][j] == 3:
+                if 0 < i <= self.size and 0 < j <= self.size and self.mpBelong[i][j] == 2 and \
+                        self.mpType[i][j] == 3:
                     return True
         return False
+
+    def Hunt(self, x, y):
+        for i in range(1, self.size):
+            for j in range(1, self.size):
+                tmp = 0
+                flag = False
+                if self.mpType[i][j] != 0 and self.mpTmp[i][j] != 3:
+                    continue
+                for k in range(i - 3, i + 3):
+                    for w in range(j - 3, j + 3):
+                        if 1 <= k <= self.size and 1 <= w <= self.size and self.mpBelong[k][w] == 2 and self.mpType[k][
+                            w] != 1:
+                            tmp += 1
+                        else:
+                            flag = True
+                            break
+                    if flag:
+                        break
+                if tmp >= 5:
+                    self.Attack(x, y, i, j)
+                    return
+        return
 
     def botMove(self):
         sleep(self.TIME_PER_TURN)
         x = 0
         y = 0
         tryTime = 0
-        self.getMap()
+        self.GetMap()
         while True:
             if len(self.q) == 0:
-                self.changeTarget()
+                self.ChangeTarget()
             x = self.q[0][0]
             y = self.q[0][1]
             tryTime += 1
@@ -373,6 +372,9 @@ class Bot(object):
             print("Defend")
             self.Attack(x, y, self.sx, self.sy)
             return
+        if self.mpTmp[x][y] > 100 and random.randint(1, 10) == 1:
+            self.Hunt(x, y)
+            return
         ansTmp = 0
         ansI = -1
         tmpI = [0, 1, 2, 3]
@@ -380,7 +382,7 @@ class Bot(object):
         for i in tmpI:
             px = x + self.di[i][0]
             py = y + self.di[i][1]
-            if px >= 1 and px <= self.size and py >= 1 and py <= self.size and self.mpType[px][py] != 1 and (
+            if self.size >= px >= 1 != self.mpType[px][py] and 1 <= py <= self.size and (
                     not self.vis[px][py]) and (self.mpType[px][py] != 5 or self.mpTmp[x][y] > self.mpTmp[px][py]):
                 currentTmp = 0
                 if self.mpBelong[px][py] == 2:
@@ -420,19 +422,23 @@ class Bot(object):
         self.freeTime = 0
         self.table = self.driver.find_element_by_tag_name("tbody")
         while True:
+            if self.driver.current_url == "https://kana.byha.top:444/":
+                self.EnterRoom()
+                sleep(1)
+                continue
             if self.isAutoReady:
                 self.Ready()
             self.Pr('F')  # 防踢
-            self.getMap()
+            self.GetMap()
             self.freeTime += 1
             # print(self.freeTime)
-            if self.freeTime % 120 == 119 and not(self.isSecret):
+            if self.freeTime % 120 == 119 and not self.isSecret:
                 self.sendMessage(
                     '欢迎来<a href="' + "https://kana.byha.top:444/checkmate/room/" + self.roomId + '">' + self.roomId + '</a>玩')
-            checkBox = self.driver.find_element_by_class_name("form-check-input")  # 防私密
-            if (checkBox.is_selected() and not self.isSecret) or(not(checkBox.is_selected()) and self.isSecret):
-                checkBox.click()
             try:
+                checkBox = self.driver.find_element_by_class_name("form-check-input")  # 防私密
+                if (checkBox.is_selected() and not self.isSecret) or (not (checkBox.is_selected()) and self.isSecret):
+                    checkBox.click()
                 randomBtn = self.driver.find_element_by_css_selector('[data="1"]')
                 randomBtn.click()
             except:
@@ -446,7 +452,7 @@ class Bot(object):
                         self.sy = j + 1
             if self.sx == 0 or self.sy == 0:
                 continue
-            self.changeTarget()
+            self.ChangeTarget()
             self.botMove()
         return
 
