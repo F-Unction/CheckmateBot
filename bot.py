@@ -339,6 +339,8 @@ class Bot(object):
         x = 0
         y = 0
         tryTime = 0
+        if self.driver.find_element_by_id("game-status").get_attribute('innerHTML') != "游戏中":
+           return
         self.GetMap()
         while True:
             if len(self.q) == 0:
@@ -372,7 +374,7 @@ class Bot(object):
             print("Defend")
             self.Attack(x, y, self.sx, self.sy)
             return
-        if self.mpTmp[x][y] > 100 and random.randint(1, 10) == 1:
+        if self.mpTmp[x][y] > 200 and random.randint(1, 15) == 1:
             self.Hunt(x, y)
             return
         ansTmp = 0
