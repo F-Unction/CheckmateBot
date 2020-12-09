@@ -428,13 +428,13 @@ class Bot(object):
                 self.EnterRoom()
                 sleep(1)
                 continue
-            if self.isAutoReady:
+            if self.isAutoReady and self.driver.find_element_by_id("ready").get_attribute('innerHTML') == "准备":
                 self.Ready()
             self.Pr('F')  # 防踢
             self.GetMap()
             self.freeTime += 1
             # print(self.freeTime)
-            if self.freeTime % 120 == 119 and not self.isSecret:
+            if self.freeTime % 240 == 239 and not self.isSecret:
                 self.sendMessage(
                     '欢迎来<a href="' + "https://kana.byha.top:444/checkmate/room/" + self.roomId + '">' + self.roomId + '</a>玩')
             try:
@@ -445,6 +445,8 @@ class Bot(object):
                 randomBtn.click()
             except:
                 pass
+            if self.driver.find_element_by_id("game-status").get_attribute('innerHTML') != "游戏中":
+                continue
             self.sx = 0
             self.sy = 0
             for i in range(self.size):
