@@ -426,10 +426,15 @@ class Bot(object):
         while True:
             if self.driver.current_url == "https://kana.byha.top:444/":
                 self.EnterRoom()
-                sleep(1)
+                sleep(self.TIME_PER_TURN * 5)
                 continue
             if self.isAutoReady and self.driver.find_element_by_id("ready").get_attribute('innerHTML') == "准备":
                 self.Ready()
+            try:
+                speed = int(self.driver.find_element_by_id("settings-gamespeed-input-display").get_attribute('innerText'))
+                self.TIME_PER_TURN = 0.24 * 4.0 / speed
+            except:
+                pass
             self.Pr('F')  # 防踢
             self.GetMap()
             self.freeTime += 1
@@ -445,7 +450,10 @@ class Bot(object):
                 randomBtn.click()
             except:
                 pass
-            if self.driver.find_element_by_id("game-status").get_attribute('innerHTML') != "游戏中":
+            try:
+                if self.driver.find_element_by_id("game-status").get_attribute('innerHTML') != "游戏中":
+                    continue
+            except:
                 continue
             self.sx = 0
             self.sy = 0
