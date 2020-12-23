@@ -47,6 +47,8 @@ class Bot(object):
         self.ansLen = 100000
         self.freeTime = 0  # 空闲时间
         self.TIME_PER_TURN = 0.24  # 每回合的等待时间
+        self.msg = []  # 消息区
+        self.waittime = {} # 等待时间
 
     def SendKeyToTable(self, key):
         ac = ActionChains(self.driver)
@@ -126,6 +128,44 @@ class Bot(object):
                     self.mpTmp[i + 1][j + 1] = int(p)
                 except:
                     self.mpTmp[i + 1][j + 1] = 0
+        return
+
+    def GetMessage(self):  # 获取消息
+        s = self.driver.find_element_by_id("msg-container").get_attribute("innerHTML")
+        self.msg = []
+        while True:
+            tmp = re.search(r'<p>[\s\S]*?</p>', s)
+            if tmp:
+                g = tmp.group()
+                g = re.sub(r'&nbsp;', '', g)
+                g = g[3:len(g) - 4]
+                p = g.find(':')
+                self.msg.append([g[0:p], g[p + 2:len(g)]])
+                p = s.find(g)
+                s = s[p + len(g):len(s)]
+            else:
+                break
+        return
+
+    def UpdateWaitTime(self, uname):
+        try:
+            if time.time() - self.waittime[uname] < 60:
+                self.sendMessage(
+                    "@" + uname + " please try again in " + str(60 - time.time() + self.waittime[uname]) + "s")
+                return False
+            self.waittime[uname] = time.time()
+            return True
+        except:
+            self.waittime[uname] = time.time()
+            return True
+
+    def CommandLine(self):  # 命令行
+        self.GetMessage()
+        cur = self.msg[len(self.msg) - 1]
+        if cur[1] == 'refresh':
+            if self.UpdateWaitTime(cur[0]):
+                self.EnterRoom()
+                print("refreshed by " + cur[0])
         return
 
     def SelectLand(self, x, y):  # 选择土地
@@ -336,11 +376,16 @@ class Bot(object):
 
     def botMove(self):
         sleep(self.TIME_PER_TURN)
+        self.CommandLine()
         x = 0
         y = 0
         tryTime = 0
-        if self.driver.find_element_by_id("game-status").get_attribute('innerHTML') != "游戏中":
-           return
+        try:
+            if self.driver.find_element_by_id("game-status").get_attribute('innerHTML') != "游戏中":
+                return
+        except:
+            self.EnterRoom()
+            sleep(self.TIME_PER_TURN * 5)
         self.GetMap()
         while True:
             if len(self.q) == 0:
@@ -431,7 +476,8 @@ class Bot(object):
             if self.isAutoReady and self.driver.find_element_by_id("ready").get_attribute('innerHTML') == "准备":
                 self.Ready()
             try:
-                speed = int(self.driver.find_element_by_id("settings-gamespeed-input-display").get_attribute('innerText'))
+                speed = int(
+                    self.driver.find_element_by_id("settings-gamespeed-input-display").get_attribute('innerText'))
                 self.TIME_PER_TURN = 0.24 * 4.0 / speed
             except:
                 pass
