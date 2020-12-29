@@ -1,10 +1,8 @@
 import random
 import re
-import threading
 import time
 import copy
 from time import sleep
-import requests
 
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException
@@ -20,9 +18,6 @@ from tencentcloud.common.profile.client_profile import ClientProfile
 from tencentcloud.common.profile.http_profile import HttpProfile
 from tencentcloud.common.exception.tencent_cloud_sdk_exception import TencentCloudSDKException
 from tencentcloud.nlp.v20190408 import nlp_client, models
-from PIL import Image
-import sys
-import os
 
 
 class Bot(object):
@@ -31,13 +26,9 @@ class Bot(object):
     https://www.luogu.com.cn/paste/nbyi7ds9
     """
 
-    def __init__(self, username, password, roomId, isSecret, controller, mode, isAutoReady=True):
+    def __init__(self, username, password, roomId, isSecret, controller, isAutoReady=True):
         self.kanaLink = "https://kana.byha.top:444/"
-        self.mode = int(mode)
-        option = webdriver.ChromeOptions()
-        if self.mode == 2:
-            option.add_argument("headless")
-        self.driver = webdriver.Chrome(options=option)  # 浏览器
+        self.driver = webdriver.Chrome()  # 浏览器
         # self.driver = webver.Firefox()
         self.username = username  # 用户名
         self.password = password  # 密码
@@ -308,38 +299,13 @@ class Bot(object):
         self.driver.get(self.kanaLink)
         usernameBox = self.driver.find_element_by_name("username")
         passwordBox = self.driver.find_element_by_name("pwd")
-        capBox = self.driver.find_element_by_name("cap")
         ac = ActionChains(self.driver)
 
         # 输入账号密码并登录
         ac.send_keys_to_element(usernameBox, self.username)
         ac.send_keys_to_element(passwordBox, self.password)
-        if self.mode == 2:
-            self.driver.get_screenshot_as_file('tmp.png')
-            img = Image.open('tmp.png')  # 获取图片对象
-            width = img.width  # 获取图片宽度
-            height = img.height  # 获取图片高度
-            # https://blog.csdn.net/qq_19655383/article/details/70176349
-            gray_img = img.convert('L')  # 图片转换为'L'模式  模式“L”为灰色图像，它的每个像素用8个bit表示，0表示黑，255表示白，其他数字表示不同的灰度
-
-            scale = width // width  # 图片缩放100长度
-            char_lst = ' .:-=+*#%@&?'  # 要替换的字符
-            char_len = len(char_lst)  # 替换字符的长度
-
-            for y in range(0, height, scale):  # 根据缩放长度 遍历高度
-                for x in range(0, width, scale):  # 根据缩放长度 遍历宽度
-                    choice = gray_img.getpixel((x, y)) * char_len // 255  # 获取每个点的灰度  根据不同的灰度填写相应的 替换字符
-                    if choice == char_len:
-                        choice = char_len - 1
-                    sys.stdout.write(char_lst[choice])  # 写入控制台
-                sys.stdout.write('\n')
-                sys.stdout.flush()
-            sleep(30)
-            ac.send_keys_to_element(capBox, input())
-        else:
-            sleep(10)  # 等待用户手动输入验证码
+        sleep(10)  # 等待用户手动输入验证码
         ac.click(self.driver.find_element_by_id("submitButton")).perform()
-
         try:
             WebDriverWait(self.driver, 8).until(EC.url_to_be(self.kanaLink))
             print("登录成功！")
@@ -674,7 +640,5 @@ print("是否私密？(Y/N)")
 t4 = input()
 print("输入控制者：")
 t5 = input()
-print("输入模式：（1=图形化模式，2=命令行模式）")
-t6 = input()
-a = Bot(t1, t2, t3, t4 == "Y", t5, t6)
+a = Bot(t1, t2, t3, t4 == "Y", t5)
 a.Main()
