@@ -65,6 +65,7 @@ class Bot(object):
         s = fo.readlines()
         self.SecretId = s[0].strip()
         self.SecretKey = s[1].strip()
+        self.winner = {}
 
     def SendKeyToTable(self, key):
         ac = ActionChains(self.driver)
@@ -199,8 +200,17 @@ class Bot(object):
             self.sendMessage('命令帮助：<br>refresh：强制刷新<br>info：获取工作信息<br>attack [x] [y]: 攻击第x行第y列的格子<br>chat [xxx]: 与Bot对话')
         if tmp[0] == 'info':
             if self.UpdateWaitTime(cur[0]):
+                uname = list(self.winner.keys())
+                winners = ''
+                winnerList = []
+                cmp = lambda s1: s1[1]
+                for i in uname:
+                   winnerList.append([i, str(round(self.winner[i] * 100.0 / self.gameCnt, 1))])
+                winnerList.sort(key=cmp, reverse=True)
+                for i in winnerList:
+                    winners += i[0] + ':' + i[1] + '%<br>'
                 self.sendMessage(
-                    'Bot工作状态：<br>已运行' + str(time.time() - self.startTime) + 's<br>' + '参战' + str(self.gameCnt) + '局')
+                    'Bot工作状态：<br>已运行' + str(round(time.time() - self.startTime, 1)) + 's<br>' + '参战' + str(self.gameCnt) + '局<br><strong>胜率排行榜：</strong><br>' + winners)
         if tmp[0] == 'attack':
             if self.UpdateWaitTime(cur[0]):
                 if tot != 2:
@@ -575,6 +585,7 @@ class Bot(object):
         self.freeTime = 0
         self.table = self.driver.find_element_by_tag_name("tbody")
         flag = False
+        lstwinner = ''
         while True:
             if self.driver.current_url == "https://kana.byha.top:444/":
                 self.EnterRoom()
@@ -586,6 +597,20 @@ class Bot(object):
                 speed = int(
                     self.driver.find_element_by_id("settings-gamespeed-input-display").get_attribute('innerText'))
                 self.TIME_PER_TURN = 0.24 * 4.0 / speed
+            except:
+                pass
+            try:
+                if self.freeTime <= 5:
+                    tmp = self.driver.find_element_by_id("swal2-content").get_attribute('innerText')
+                    tmp = tmp[0:tmp.find("赢了")]
+                    if tmp != lstwinner:
+                        lstwinner = tmp
+                        if tmp in self.winner:
+                            self.winner[tmp] += 1
+                        else:
+                            self.winner[tmp] = 1
+                else:
+                    lstwinner = ''
             except:
                 pass
             self.Pr('F')  # 防踢
