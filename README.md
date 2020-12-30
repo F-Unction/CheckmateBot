@@ -23,5 +23,3 @@ CheckmateBot
 |```kill```  |关闭Bot  |/ |/|**是**|
 |```enter [roomid]```  |进入roomid房间  |/ |/|**是**|
 |```setsecret```  |切换房间私密状态  |/ |/|**是**|
-
-对于同一个用户，命令冷却时间为 1min
