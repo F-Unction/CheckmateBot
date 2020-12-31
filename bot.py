@@ -201,16 +201,21 @@ class Bot(object):
         if tmp[0] == 'info':
             if self.UpdateWaitTime(cur[0]):
                 uname = list(self.winner.keys())
-                winners = ''
+                winners = '<strong>胜率排行榜：</strong><br>'
                 winnerList = []
                 cmp = lambda s1: s1[1]
                 for i in uname:
-                   winnerList.append([i, str(round(self.winner[i] * 100.0 / self.gameCnt, 1))])
+                   winnerList.append([i, round(self.winner[i] * 100.0 / self.gameCnt, 1)])
                 winnerList.sort(key=cmp, reverse=True)
-                for i in winnerList:
-                    winners += i[0] + ':' + i[1] + '%<br>'
                 self.sendMessage(
-                    'Bot工作状态：<br>已运行' + str(round(time.time() - self.startTime, 1)) + 's<br>' + '参战' + str(self.gameCnt) + '局<br><strong>胜率排行榜：</strong><br>' + winners)
+                    'Bot工作状态：<br>已运行' + str(round(time.time() - self.startTime, 1)) + 's<br>' + '参战' + str(self.gameCnt) + '局<br>')
+                for i in winnerList:
+                    winners += i[0] + ':' + str(i[1]) + '%<br>'
+                    if len(winners) >= 70:
+                        self.sendMessage('<br>' + winners)
+                        winners = ''
+                if winners != '':
+                    self.sendMessage('<br>' + winners)
         if tmp[0] == 'attack':
             if self.UpdateWaitTime(cur[0]):
                 if tot != 2:
@@ -591,14 +596,6 @@ class Bot(object):
                 self.EnterRoom()
                 sleep(self.TIME_PER_TURN * 5)
                 continue
-            if self.isAutoReady and self.driver.find_element_by_id("ready").get_attribute('innerHTML') == "准备":
-                self.Ready()
-            try:
-                speed = int(
-                    self.driver.find_element_by_id("settings-gamespeed-input-display").get_attribute('innerText'))
-                self.TIME_PER_TURN = 0.24 * 4.0 / speed
-            except:
-                pass
             try:
                 if self.freeTime <= 5:
                     tmp = self.driver.find_element_by_id("swal2-content").get_attribute('innerText')
@@ -611,6 +608,14 @@ class Bot(object):
                             self.winner[tmp] = 1
                 else:
                     lstwinner = ''
+            except:
+                pass
+            if self.isAutoReady and self.driver.find_element_by_id("ready").get_attribute('innerHTML') == "准备":
+                self.Ready()
+            try:
+                speed = int(
+                    self.driver.find_element_by_id("settings-gamespeed-input-display").get_attribute('innerText'))
+                self.TIME_PER_TURN = 0.24 * 4.0 / speed
             except:
                 pass
             self.Pr('F')  # 防踢
