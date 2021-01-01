@@ -164,7 +164,7 @@ class Bot(object):
                 break
         return
 
-    def UpdateWaitTime(self, uname, t = 60):
+    def UpdateWaitTime(self, uname, t=60):
         if uname == self.controller:
             return True
         try:
@@ -197,20 +197,22 @@ class Bot(object):
                     self.EnterRoom()
                     print("refreshed by " + cur[0])
         if tmp[0] == 'help':
-            self.sendMessage('命令帮助：<br>refresh：强制刷新<br>info：获取工作信息<br>attack [x] [y]: 攻击第x行第y列的格子<br>chat [xxx]: 与Bot对话')
+            self.sendMessage(
+                '命令帮助：<br>refresh：强制刷新<br>info：获取工作信息<br>attack [x] [y]: 攻击第x行第y列的格子<br>chat [xxx]: 与Bot对话')
         if tmp[0] == 'info':
             if self.UpdateWaitTime(cur[0]):
                 uname = list(self.winner.keys())
-                winners = '<strong>胜率排行榜：</strong><br>'
+                winners = '<strong>胜场排行榜：</strong><br>'
                 winnerList = []
                 cmp = lambda s1: s1[1]
                 for i in uname:
-                   winnerList.append([i, round(self.winner[i] * 100.0 / self.gameCnt, 1)])
+                    winnerList.append([i, self.winner[i]])
                 winnerList.sort(key=cmp, reverse=True)
                 self.sendMessage(
-                    'Bot工作状态：<br>已运行' + str(round(time.time() - self.startTime, 1)) + 's<br>' + '参战' + str(self.gameCnt) + '局<br>')
+                    '<br><strong>Bot工作状态：</strong><br>已运行' + str(
+                        round(time.time() - self.startTime, 1)) + 's<br>' + '参战' + str(self.gameCnt) + '局<br>')
                 for i in winnerList:
-                    winners += i[0] + ':' + str(i[1]) + '%<br>'
+                    winners += i[0] + ':' + str(i[1]) + '场<br>'
                     if len(winners) >= 70:
                         self.sendMessage('<br>' + winners)
                         winners = ''
@@ -223,22 +225,15 @@ class Bot(object):
                 elif self.driver.find_element_by_id("game-status").get_attribute('innerHTML') != "游戏中":
                     self.sendMessage('不在游戏中')
                 else:
-                    tryTime = 0
-                    while True:
-                        self.ChangeTarget()
-                        x = self.q[0][0]
-                        y = self.q[0][1]
-                        tryTime += 1
-                        self.q.pop(0)
-                        if not (self.mpTmp[x][y] <= 1 and self.mpType[x][y] != 2 and tryTime <= 10):
-                            break
                     try:
                         ex = int(tmp[1])
                         ey = int(tmp[2])
                         if 1 <= ex <= self.size and 1 <= ey <= self.size:
-                            self.sendMessage('(' + str(x) + ', ' + str(y) + ') -> (' + str(ex) + ', ' + str(ey) + ')')
-                            self.Attack(x, y, ex, ey)
-                            self.sendMessage(str(self.ansLen))
+                            if [ex, ey] in self.homes:
+                                self.sendMessage('重复位置')
+                            else:
+                                self.sendMessage('(' + str(ex) + ', ' + str(ey) + ')')
+                                self.homes.append([ex, ey])
                         else:
                             self.sendMessage('参数不在范围内')
                     except:
