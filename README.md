@@ -20,6 +20,17 @@ CheckmateBot
 |```info```  |获取工作信息  |/ |60s|否|
 |```attack [x] [y]```  |攻击第x行第y列的格子  |仅限游戏中可用 |60s|否|
 |```chat [xxx]```  |与Bot对话  |/ |5s|否|
+|```query (i)```  |查询自己（或玩家i）的分数  |/ |60s|否|
 |```kill```  |关闭Bot  |/ |/|**是**|
 |```enter [roomid]```  |进入roomid房间  |/ |/|**是**|
 |```setsecret```  |切换房间私密状态  |/ |/|**是**|
+|```setselectedmap [mapid]```  |设置默认选择地图为mapid  |默认值`1` |/|**是**|
+|```savedata```  |保存游戏数据  |目前只保存分数排行榜 |/|**是**|
+|```readdata```  |读取游戏数据  |/ |/|**是**|
+|```setautosave```  |切换自动保存  |每局游戏结束后保存一次（默认值`False`） |/|**是**|
+
+### 关于chat命令
+
+使用了腾讯云的[NLP](https://cloud.tencent.com/product/nlp)
+
+若要在您的Bot上使用该命令，需要在`bot.py`同目录下建立名为`secret`的文件，包含2行，第1行为您的SecretId，第2行为您的SecretKey。

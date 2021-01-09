@@ -56,7 +56,9 @@ class Bot(object):
         self.waittime = {}  # 等待时间
         self.tips = ['输入help以查看命令帮助', '命令refresh可以使Bot强制刷新', '命令info可以获取Bot的工作信息', 'Bot的扩张优先级：主基地>城市>敌方领地>空白土地>我方领地',
                      'Bot在每回合有1/5的概率发起掏家', '若自身主基地受到威胁，Bot会优先防守', 'Bot在每回合有1/15的概率发起随机扩张', 'Bot更倾向于选取靠外的格子进行扩张'
-            , 'Bot的随机扩张目标是周围7*7范围内有不少于5个敌方领地的格子', '命令attack [x] [y]可以使Bot攻击第x行第y列的格子', '命令chat [xxx]可以与Bot对话']
+            , 'Bot的随机扩张目标是周围7*7范围内有不少于5个敌方领地的格子', '命令attack [x] [y]可以使Bot攻击第x行第y列的格子', '命令chat [xxx]可以与Bot对话',
+                     '在n人局获胜可以获得(n-1)^2分',
+                     '命令query (i)可以查询自己（或玩家i）的分数']
         self.gameCnt = 0
         self.startTime = time.time()
         self.controller = controller
@@ -66,6 +68,8 @@ class Bot(object):
         self.SecretId = s[0].strip()
         self.SecretKey = s[1].strip()
         self.winner = {}
+        self.selectedMap = '1'
+        self.isAutoSave = False
 
     def SendKeyToTable(self, key):
         ac = ActionChains(self.driver)
@@ -178,6 +182,17 @@ class Bot(object):
             self.waittime[uname] = time.time()
             return True
 
+    def saveData(self):
+        uname = list(self.winner.keys())
+        data = open('data', mode='w')
+        data.write(str(len(uname)) + '\n')
+        for i in uname:
+            data.write(i + '\n')
+            data.write(str(self.winner[i]) + '\n')
+        data.flush()
+        data.close()
+        return
+
     def CommandLine(self):  # 命令行
         self.GetMessage()
         cur = self.msg[len(self.msg) - 1]
@@ -199,10 +214,11 @@ class Bot(object):
         if tmp[0] == 'help':
             self.sendMessage(
                 '命令帮助：<br>refresh：强制刷新<br>info：获取工作信息<br>attack [x] [y]: 攻击第x行第y列的格子<br>chat [xxx]: 与Bot对话')
+            self.sendMessage('query (i): 查询自己（或玩家i）的分数')
         if tmp[0] == 'info':
             if self.UpdateWaitTime(cur[0]):
                 uname = list(self.winner.keys())
-                winners = '<strong>胜场排行榜：</strong><br>'
+                winners = '<strong>分数排行榜：</strong><br>'
                 winnerList = []
                 cmp = lambda s1: s1[1]
                 for i in uname:
@@ -212,7 +228,7 @@ class Bot(object):
                     '<br><strong>Bot工作状态：</strong><br>已运行' + str(
                         round(time.time() - self.startTime, 1)) + 's<br>' + '参战' + str(self.gameCnt) + '局<br>')
                 for i in winnerList:
-                    winners += i[0] + ':' + str(i[1]) + '场<br>'
+                    winners += i[0] + ':' + str(i[1]) + '分<br>'
                     if len(winners) >= 70:
                         self.sendMessage('<br>' + winners)
                         winners = ''
@@ -238,6 +254,20 @@ class Bot(object):
                             self.sendMessage('参数不在范围内')
                     except:
                         self.sendMessage('参数应为整数')
+        if tmp[0] == 'query':
+            if self.UpdateWaitTime(cur[0]):
+                if tot != 0 and tot != 1:
+                    self.sendMessage('需要0或1个参数，发现' + str(tot) + '个')
+                elif tot == 0:
+                    try:
+                        self.sendMessage(str(self.winner[cur[0]]) + '分')
+                    except:
+                        self.sendMessage('0分')
+                elif tot == 1:
+                    try:
+                        self.sendMessage(str(self.winner[tmp[1]]) + '分')
+                    except:
+                        self.sendMessage('0分')
         if tmp[0] == 'chat':
             if self.UpdateWaitTime(cur[0], 5):
                 if tot != 1:
@@ -278,6 +308,41 @@ class Bot(object):
             if cur[0] == self.controller:
                 self.isSecret = not self.isSecret
                 self.sendMessage('secret = ' + str(self.isSecret))
+            else:
+                self.sendMessage('权限不足')
+        if tmp[0] == 'setselectedmap':
+            if cur[0] == self.controller:
+                self.selectedMap = tmp[1]
+                self.sendMessage('selectedMap = ' + self.selectedMap)
+            else:
+                self.sendMessage('权限不足')
+        if tmp[0] == 'savedata':
+            if cur[0] == self.controller:
+                self.saveData()
+                self.sendMessage('saved')
+            else:
+                self.sendMessage('权限不足')
+        if tmp[0] == 'readdata':
+            if cur[0] == self.controller:
+                try:
+                    self.winner = {}
+                    data = open('data', mode='r')
+                    s = data.readlines()
+                    n = int(s[0].strip())
+                    for i in range(n):
+                        uname = s[2 * i + 1].strip()
+                        score = int(s[2 * (i + 1)].strip())
+                        self.winner[uname] = score
+                    data.close()
+                    self.sendMessage('read')
+                except:
+                    self.sendMessage('error')
+            else:
+                self.sendMessage('权限不足')
+        if tmp[0] == 'setautosave':
+            if cur[0] == self.controller:
+                self.isAutoSave = not self.isAutoSave
+                self.sendMessage('autosave = ' + str(self.isAutoSave))
             else:
                 self.sendMessage('权限不足')
         return
@@ -326,12 +391,6 @@ class Bot(object):
             del self
 
     def Ready(self):
-        try:
-            self.userCount = int(
-                self.driver.find_element_by_id("total-user").text)
-        except:
-            self.userCount = 2
-            return
         try:
             ac = ActionChains(self.driver)
             ac.click(self.driver.find_element_by_id("ready")).perform()
@@ -435,9 +494,7 @@ class Bot(object):
         self.tmpVis = [[False for i in range(25)] for j in range(25)]
         self.tmpVis[x][y] = True
         self.ansLen = 10000
-        print("attack, ", ex, ey)
         self.dfsRoute(x, y, ex, ey, 0)
-        print(self.route, self.ansLen)
         if len(self.route) < 1:
             return
         for p in self.route:
@@ -532,7 +589,6 @@ class Bot(object):
             self.Attack(x, y, self.homes[g][0], self.homes[g][1])
             return
         if self.mpTmp[x][y] > 20 and self.dist(x, y, self.sx, self.sy) >= 4 and self.checkHome():
-            print("Defend")
             self.Attack(x, y, self.sx, self.sy)
             return
         if self.mpTmp[x][y] > 200 and random.randint(1, 15) == 1:
@@ -585,34 +641,42 @@ class Bot(object):
         self.freeTime = 0
         self.table = self.driver.find_element_by_tag_name("tbody")
         flag = False
-        lstwinner = ''
         while True:
             if self.driver.current_url == "https://kana.byha.top:444/":
                 self.EnterRoom()
                 sleep(self.TIME_PER_TURN * 5)
                 continue
             try:
-                if self.freeTime <= 5:
-                    tmp = self.driver.find_element_by_id("swal2-content").get_attribute('innerText')
-                    tmp = tmp[0:tmp.find("赢了")]
-                    if tmp != lstwinner:
-                        lstwinner = tmp
-                        if tmp in self.winner:
-                            self.winner[tmp] += 1
-                        else:
-                            self.winner[tmp] = 1
+                tmp = self.driver.find_element_by_id("swal2-content").get_attribute('innerText')
+                tmp = tmp[0:tmp.find("赢了")]
+                print(tmp)
+                if tmp == '':
+                    continue
+                try:
+                    self.userCount = int(
+                        self.driver.find_element_by_id("total-user").text)
+                except:
+                    self.userCount = 2
+                addtmp = (self.userCount - 1) ** 2
+                print(self.userCount)
+                if tmp in self.winner:
+                    self.winner[tmp] += addtmp
                 else:
-                    lstwinner = ''
+                    self.winner[tmp] = addtmp
+                ac = ActionChains(self.driver)
+                ac.send_keys(Keys.ENTER).perform()
             except:
                 pass
-            if self.isAutoReady and self.driver.find_element_by_id("ready").get_attribute('innerHTML') == "准备":
-                self.Ready()
             try:
+                if self.isAutoReady and self.driver.find_element_by_id("ready").get_attribute('innerHTML') == "准备":
+                    self.Ready()
                 speed = int(
                     self.driver.find_element_by_id("settings-gamespeed-input-display").get_attribute('innerText'))
                 self.TIME_PER_TURN = 0.24 * 4.0 / speed
             except:
                 pass
+            if self.isAutoSave and self.freeTime == 1:
+                self.saveData()
             self.Pr('F')  # 防踢
             self.GetMap()
             self.freeTime += 1
@@ -627,7 +691,7 @@ class Bot(object):
                 checkBox = self.driver.find_element_by_class_name("form-check-input")  # 防私密
                 if (checkBox.is_selected() and not self.isSecret) or (not (checkBox.is_selected()) and self.isSecret):
                     checkBox.click()
-                randomBtn = self.driver.find_element_by_css_selector('[data="1"]')
+                randomBtn = self.driver.find_element_by_css_selector('[data="' + self.selectedMap + '"]')
                 randomBtn.click()
             except:
                 pass
