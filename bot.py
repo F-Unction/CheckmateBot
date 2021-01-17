@@ -54,11 +54,23 @@ class Bot(object):
         self.TIME_PER_TURN = 0.24  # 每回合的等待时间
         self.msg = []  # 消息区
         self.waittime = {}  # 等待时间
-        self.tips = ['输入help以查看命令帮助', '命令refresh可以使Bot强制刷新', '命令info可以获取Bot的工作信息', 'Bot的扩张优先级：主基地>城市>敌方领地>空白土地>我方领地',
+        self.commands = {'help (command)': ['查看命令列表（或命令command的用法）', 0], 'refresh': ['强制刷新', 20],
+                         'info': ['获取Bot的工作信息', 100],
+                         'attack [x] [y]': ['使Bot攻击第x行第y列的格子', 20], 'chat [xxx]': ['与Bot对话', 5],
+                         'query (i)': ['查询自己（或玩家i）的分数', 0], 'choose [mapname/mapid]': ['使Bot选择mapname/mapid地图', 20],
+                         'send [uname] [x]': ['赠送x点分数给用户名为uname的玩家', 5]}
+        self.aToB = {'help': 'help (command)', 'refresh': 'refresh', 'info': 'info', 'attack': 'attack [x] [y]',
+                     'chat': 'chat [xxx]', 'query': 'query (i)',
+                     'choose': 'choose [mapname/mapid]', 'send': 'send [uname] [x]'}
+        self.mapNameToMapID = {'随机': '1', '迷宫': '2', '空白': '3', '流浪': '5', '排位': '6', 'BRA': '7'}
+        self.tips = ['Bot的扩张优先级：主基地>城市>敌方领地>空白土地>我方领地',
                      'Bot在每回合有1/5的概率发起掏家', '若自身主基地受到威胁，Bot会优先防守', 'Bot在每回合有1/15的概率发起随机扩张', 'Bot更倾向于选取靠外的格子进行扩张'
-            , 'Bot的随机扩张目标是周围7*7范围内有不少于5个敌方领地的格子', '命令attack [x] [y]可以使Bot攻击第x行第y列的格子', '命令chat [xxx]可以与Bot对话',
-                     '在n人局获胜可以获得(n-1)^2分',
-                     '命令query (i)可以查询自己（或玩家i）的分数']
+            , 'Bot的随机扩张目标是周围7*7范围内有不少于5个敌方领地的格子',
+                     '在n人局获胜可以获得(n-1)^2分', 'mapname与mapid的映射表：' + str(self.mapNameToMapID),
+                     ]
+        tmp = list(self.commands.keys())
+        for x in tmp:
+            self.tips.append('命令' + x + ': ' + self.commands[x][0] + '（花费' + str(self.commands[x][1]) + '点分数）')
         self.gameCnt = 0
         self.startTime = time.time()
         self.controller = controller
@@ -67,8 +79,9 @@ class Bot(object):
         s = fo.readlines()
         self.SecretId = s[0].strip()
         self.SecretKey = s[1].strip()
-        self.winner = {}
+        self.score = {}
         self.selectedMap = '1'
+        self.defaultSelectedMap = '1'
         self.isAutoSave = False
 
     def SendKeyToTable(self, key):
@@ -152,7 +165,11 @@ class Bot(object):
         return
 
     def GetMessage(self):  # 获取消息
-        s = self.driver.find_element_by_id("msg-container").get_attribute("innerHTML")
+        try:
+            s = self.driver.find_element_by_id("msg-container").get_attribute("innerHTML")
+        except:
+            self.EnterRoom()
+            return
         self.msg = []
         while True:
             tmp = re.search(r'<p>[\s\S]*?</p>', s)
@@ -168,27 +185,25 @@ class Bot(object):
                 break
         return
 
-    def UpdateWaitTime(self, uname, t=60):
+    def UpdateScore(self, uname, cost):
         if uname == self.controller:
             return True
         try:
-            if time.time() - self.waittime[uname] < t:
-                self.sendMessage(
-                    "@" + uname + " please try again in " + str(t - time.time() + self.waittime[uname]) + "s")
+            if self.score[uname] < cost:
                 return False
-            self.waittime[uname] = time.time()
-            return True
+            else:
+                self.score[uname] -= cost
+                return True
         except:
-            self.waittime[uname] = time.time()
-            return True
+            return False
 
     def saveData(self):
-        uname = list(self.winner.keys())
+        uname = list(self.score.keys())
         data = open('data', mode='w')
         data.write(str(len(uname)) + '\n')
         for i in uname:
             data.write(i + '\n')
-            data.write(str(self.winner[i]) + '\n')
+            data.write(str(self.score[i]) + '\n')
         data.flush()
         data.close()
         return
@@ -205,24 +220,39 @@ class Bot(object):
             elif cur[1][i] != ' ':
                 tmp[tot] += cur[1][i]
         if tmp[0] == 'refresh':
-            if self.UpdateWaitTime(cur[0]):
+            if self.UpdateScore(cur[0], self.commands['refresh'][1]):
                 if time.time() - self.gameStartTime < 300:
                     self.sendMessage("游戏开始后5分钟才能使用刷新")
                 else:
                     self.EnterRoom()
                     print("refreshed by " + cur[0])
+            else:
+                self.sendMessage('分数不足')
         if tmp[0] == 'help':
-            self.sendMessage(
-                '命令帮助：<br>refresh：强制刷新<br>info：获取工作信息<br>attack [x] [y]: 攻击第x行第y列的格子<br>chat [xxx]: 与Bot对话')
-            self.sendMessage('query (i): 查询自己（或玩家i）的分数')
+            if tot == 0:
+                msg = '<strong>命令列表：</strong><br>'
+                tmp = list(self.aToB.keys())
+                for x in tmp:
+                    msg += x + ', '
+                self.sendMessage(msg)
+                self.sendMessage('提示：输入help [command]以查询命令command的用法')
+            elif tot == 1:
+                try:
+                    x = self.aToB[tmp[1]]
+                    self.sendMessage('命令' + x + ': ' + self.commands[x][0] + '（花费' + str(
+                        self.commands[x][1]) + '点分数）')
+                except:
+                    self.sendMessage('未找到该命令')
+            else:
+                self.sendMessage('需要0或1个参数，发现' + str(tot) + '个')
         if tmp[0] == 'info':
-            if self.UpdateWaitTime(cur[0]):
-                uname = list(self.winner.keys())
+            if self.UpdateScore(cur[0], self.commands['info'][1]):
+                uname = list(self.score.keys())
                 winners = '<strong>分数排行榜：</strong><br>'
                 winnerList = []
                 cmp = lambda s1: s1[1]
                 for i in uname:
-                    winnerList.append([i, self.winner[i]])
+                    winnerList.append([i, self.score[i]])
                 winnerList.sort(key=cmp, reverse=True)
                 self.sendMessage(
                     '<br><strong>Bot工作状态：</strong><br>已运行' + str(
@@ -234,8 +264,10 @@ class Bot(object):
                         winners = ''
                 if winners != '':
                     self.sendMessage('<br>' + winners)
+            else:
+                self.sendMessage('分数不足')
         if tmp[0] == 'attack':
-            if self.UpdateWaitTime(cur[0]):
+            if self.UpdateScore(cur[0], self.commands['attack [x] [y]'][1]):
                 if tot != 2:
                     self.sendMessage('需要2个参数，发现' + str(tot) + '个')
                 elif self.driver.find_element_by_id("game-status").get_attribute('innerHTML') != "游戏中":
@@ -254,22 +286,23 @@ class Bot(object):
                             self.sendMessage('参数不在范围内')
                     except:
                         self.sendMessage('参数应为整数')
+            else:
+                self.sendMessage('分数不足')
         if tmp[0] == 'query':
-            if self.UpdateWaitTime(cur[0]):
-                if tot != 0 and tot != 1:
-                    self.sendMessage('需要0或1个参数，发现' + str(tot) + '个')
-                elif tot == 0:
-                    try:
-                        self.sendMessage(str(self.winner[cur[0]]) + '分')
-                    except:
-                        self.sendMessage('0分')
-                elif tot == 1:
-                    try:
-                        self.sendMessage(str(self.winner[tmp[1]]) + '分')
-                    except:
-                        self.sendMessage('0分')
+            if tot != 0 and tot != 1:
+                self.sendMessage('需要0或1个参数，发现' + str(tot) + '个')
+            elif tot == 0:
+                try:
+                    self.sendMessage(str(self.score[cur[0]]) + '分')
+                except:
+                    self.sendMessage('0分')
+            elif tot == 1:
+                try:
+                    self.sendMessage(str(self.score[tmp[1]]) + '分')
+                except:
+                    self.sendMessage('0分')
         if tmp[0] == 'chat':
-            if self.UpdateWaitTime(cur[0], 5):
+            if self.UpdateScore(cur[0], self.commands['chat [xxx]'][1]):
                 if tot != 1:
                     self.sendMessage('需要1个参数，发现' + str(tot) + '个')
                 else:
@@ -293,6 +326,63 @@ class Bot(object):
 
                     except TencentCloudSDKException as err:
                         print(err)
+            else:
+                self.sendMessage('分数不足')
+        if tmp[0] == 'choose':
+            if cur[0] == self.controller:
+                self.selectedMap = tmp[1]
+                if tot == 2 and tmp[2] == '-f':
+                    self.defaultSelectedMap = tmp[1]
+                    self.sendMessage('selectedMap = ' + self.selectedMap + ' fixed')
+                else:
+                    self.sendMessage('selectedMap = ' + self.selectedMap)
+            elif self.UpdateScore(cur[0], self.commands['choose [mapname/mapid]'][1]):
+                if tot != 1:
+                    self.sendMessage('需要1个参数，发现' + str(tot) + '个')
+                else:
+                    try:
+                        if tmp[1].isdigit():
+                            if 1 <= int(tmp[1]) <= 7:
+                                self.selectedMap = tmp[1]
+                                self.sendMessage('selectedMap = ' + self.selectedMap)
+                            else:
+                                self.sendMessage('参数不在范围内')
+                        else:
+                            try:
+                                self.selectedMap = self.mapNameToMapID[tmp[1]]
+                                self.sendMessage('selectedMap = ' + self.selectedMap)
+                            except:
+                                self.sendMessage('参数不在范围内')
+                    except:
+                        self.sendMessage('分数不足')
+            else:
+                self.sendMessage('分数不足')
+        if tmp[0] == 'send':
+            if self.UpdateScore(cur[0], self.commands['send [uname] [x]'][1]):
+                if tot != 2:
+                    self.sendMessage('需要2个参数，发现' + str(tot) + '个')
+                else:
+                    try:
+                        x = int(tmp[2])
+                        if x <= 0:
+                            raise ValueError('')
+                    except:
+                        self.sendMessage('参数不在范围内')
+                    else:
+                        try:
+                            if x > self.score[cur[0]]:
+                                self.sendMessage('分数不足')
+                            else:
+                                self.score[cur[0]] -= x
+                                try:
+                                    self.score[tmp[1]] += x
+                                except:
+                                    self.score[tmp[1]] = x
+                                self.sendMessage('成功')
+                        except:
+                            self.sendMessage('分数不足')
+            else:
+                self.sendMessage('分数不足')
         if tmp[0] == 'kill':
             if cur[0] == self.controller:
                 self.Kill()
@@ -310,12 +400,6 @@ class Bot(object):
                 self.sendMessage('secret = ' + str(self.isSecret))
             else:
                 self.sendMessage('权限不足')
-        if tmp[0] == 'setselectedmap':
-            if cur[0] == self.controller:
-                self.selectedMap = tmp[1]
-                self.sendMessage('selectedMap = ' + self.selectedMap)
-            else:
-                self.sendMessage('权限不足')
         if tmp[0] == 'savedata':
             if cur[0] == self.controller:
                 self.saveData()
@@ -325,14 +409,14 @@ class Bot(object):
         if tmp[0] == 'readdata':
             if cur[0] == self.controller:
                 try:
-                    self.winner = {}
+                    self.score = {}
                     data = open('data', mode='r')
                     s = data.readlines()
                     n = int(s[0].strip())
                     for i in range(n):
                         uname = s[2 * i + 1].strip()
                         score = int(s[2 * (i + 1)].strip())
-                        self.winner[uname] = score
+                        self.score[uname] = score
                     data.close()
                     self.sendMessage('read')
                 except:
@@ -550,6 +634,7 @@ class Bot(object):
     def botMove(self):
         sleep(self.TIME_PER_TURN)
         self.CommandLine()
+        self.selectedMap = self.defaultSelectedMap
         x = 0
         y = 0
         tryTime = 0
@@ -659,10 +744,10 @@ class Bot(object):
                     self.userCount = 2
                 addtmp = (self.userCount - 1) ** 2
                 print(self.userCount)
-                if tmp in self.winner:
-                    self.winner[tmp] += addtmp
+                if tmp in self.score:
+                    self.score[tmp] += addtmp
                 else:
-                    self.winner[tmp] = addtmp
+                    self.score[tmp] = addtmp
                 ac = ActionChains(self.driver)
                 ac.send_keys(Keys.ENTER).perform()
             except:
@@ -677,12 +762,12 @@ class Bot(object):
                 pass
             if self.isAutoSave and self.freeTime == 1:
                 self.saveData()
+            self.CommandLine()
             self.Pr('F')  # 防踢
             self.GetMap()
             self.freeTime += 1
             # print(self.freeTime)
             sleep(0.2)
-            self.CommandLine()
             if self.freeTime % 480 == 10 and not self.isSecret:
                 self.sendMessage("【提示】" + self.tips[random.randint(0, len(self.tips) - 1)])
                 # self.sendMessage(
