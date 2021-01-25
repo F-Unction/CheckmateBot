@@ -56,13 +56,17 @@ class Bot(object):
         self.waittime = {}  # 等待时间
         self.commands = {'help (command)': ['查看命令列表（或命令command的用法）', 0], 'refresh': ['强制刷新', 20],
                          'info': ['获取Bot的工作信息', 100],
-                         'attack [x] [y]': ['使Bot攻击第x行第y列的格子', 20], 'chat [xxx]': ['与Bot对话', 5],
-                         'query (i)': ['查询自己（或玩家i）的分数', 0], 'choose [mapname/mapid]': ['使Bot选择mapname/mapid地图', 20],
-                         'send [uname] [x]': ['赠送x点分数给用户名为uname的玩家', 5]}
-        self.aToB = {'help': 'help (command)', 'refresh': 'refresh', 'info': 'info', 'attack': 'attack [x] [y]',
+                         'chat [xxx]': ['与Bot对话', 5],
+                         'query (i)': ['查询自己（或玩家i）的分数', 0],
+                         'choose (mapname/mapid)': ['查看地图票数榜（或给mapname/mapid地图投票）', 5],
+                         'send [uname] [x]': ['赠送x点分数给用户名为uname的玩家', 5],
+                         'draw [n]' : ['抽奖n次', '10*n']}
+        self.aToB = {'help': 'help (command)', 'refresh': 'refresh', 'info': 'info',
                      'chat': 'chat [xxx]', 'query': 'query (i)',
-                     'choose': 'choose [mapname/mapid]', 'send': 'send [uname] [x]'}
+                     'choose': 'choose (mapname/mapid)', 'send': 'send [uname] [x]', 'draw' : 'draw [n]'}
         self.mapNameToMapID = {'随机': '1', '迷宫': '2', '空白': '3', '流浪': '5', '排位': '6', 'BRA': '7'}
+        self.playerVote = {}
+        self.mapVoted = {1: 0, 2: 0, 3: 0, 5: 0, 6: 0, 7: 0}
         self.tips = ['Bot的扩张优先级：主基地>城市>敌方领地>空白土地>我方领地',
                      'Bot在每回合有1/5的概率发起掏家', '若自身主基地受到威胁，Bot会优先防守', 'Bot在每回合有1/15的概率发起随机扩张', 'Bot更倾向于选取靠外的格子进行扩张'
             , 'Bot的随机扩张目标是周围7*7范围内有不少于5个敌方领地的格子',
@@ -193,18 +197,31 @@ class Bot(object):
                 return False
             else:
                 self.score[uname] -= cost
+                self.score[self.username] += cost
                 return True
         except:
             return False
 
-    def saveData(self):
+    def saveData(self, filename = 'data'):
         uname = list(self.score.keys())
-        data = open('data', mode='w')
+        data = open(filename, mode='w')
         data.write(str(len(uname)) + '\n')
         for i in uname:
             data.write(i + '\n')
             data.write(str(self.score[i]) + '\n')
         data.flush()
+        data.close()
+        return
+
+    def readData(self, filename = 'data'):
+        self.score = {}
+        data = open(filename, mode='r')
+        s = data.readlines()
+        n = int(s[0].strip())
+        for i in range(n):
+            uname = s[2 * i + 1].strip()
+            score = int(s[2 * (i + 1)].strip())
+            self.score[uname] = score
         data.close()
         return
 
@@ -257,6 +274,7 @@ class Bot(object):
                 self.sendMessage(
                     '<br><strong>Bot工作状态：</strong><br>已运行' + str(
                         round(time.time() - self.startTime, 1)) + 's<br>' + '参战' + str(self.gameCnt) + '局<br>')
+                self.sendMessage('当前奖池：' + str(self.score[self.username]) + '分')
                 for i in winnerList:
                     winners += i[0] + ':' + str(i[1]) + '分<br>'
                     if len(winners) >= 70:
@@ -264,28 +282,6 @@ class Bot(object):
                         winners = ''
                 if winners != '':
                     self.sendMessage('<br>' + winners)
-            else:
-                self.sendMessage('分数不足')
-        if tmp[0] == 'attack':
-            if self.UpdateScore(cur[0], self.commands['attack [x] [y]'][1]):
-                if tot != 2:
-                    self.sendMessage('需要2个参数，发现' + str(tot) + '个')
-                elif self.driver.find_element_by_id("game-status").get_attribute('innerHTML') != "游戏中":
-                    self.sendMessage('不在游戏中')
-                else:
-                    try:
-                        ex = int(tmp[1])
-                        ey = int(tmp[2])
-                        if 1 <= ex <= self.size and 1 <= ey <= self.size:
-                            if [ex, ey] in self.homes:
-                                self.sendMessage('重复位置')
-                            else:
-                                self.sendMessage('(' + str(ex) + ', ' + str(ey) + ')')
-                                self.homes.append([ex, ey])
-                        else:
-                            self.sendMessage('参数不在范围内')
-                    except:
-                        self.sendMessage('参数应为整数')
             else:
                 self.sendMessage('分数不足')
         if tmp[0] == 'query':
@@ -329,32 +325,39 @@ class Bot(object):
             else:
                 self.sendMessage('分数不足')
         if tmp[0] == 'choose':
-            if cur[0] == self.controller:
-                self.selectedMap = tmp[1]
-                if tot == 2 and tmp[2] == '-f':
-                    self.defaultSelectedMap = tmp[1]
-                    self.sendMessage('selectedMap = ' + self.selectedMap + ' fixed')
-                else:
-                    self.sendMessage('selectedMap = ' + self.selectedMap)
-            elif self.UpdateScore(cur[0], self.commands['choose [mapname/mapid]'][1]):
-                if tot != 1:
-                    self.sendMessage('需要1个参数，发现' + str(tot) + '个')
-                else:
-                    try:
-                        if tmp[1].isdigit():
-                            if 1 <= int(tmp[1]) <= 7:
-                                self.selectedMap = tmp[1]
-                                self.sendMessage('selectedMap = ' + self.selectedMap)
-                            else:
-                                self.sendMessage('参数不在范围内')
-                        else:
+            if cur[0] == self.controller and tot == 2 and tmp[2] == '-f':
+                self.defaultSelectedMap = tmp[1]
+                self.sendMessage('selectedMap = ' + self.selectedMap + ' fixed')
+            elif self.UpdateScore(cur[0], self.commands['choose (mapname/mapid)'][1]):
+                if tot != 1 and tot != 0:
+                    self.sendMessage('需要0或1个参数，发现' + str(tot) + '个')
+                elif tot == 1:
+                    if tmp[1].isdigit():
+                        if 1 <= int(tmp[1]) <= 7 and int(tmp[1]) != 4:
                             try:
-                                self.selectedMap = self.mapNameToMapID[tmp[1]]
-                                self.sendMessage('selectedMap = ' + self.selectedMap)
+                                if self.playerVote[cur[0]] != 0:
+                                    self.mapVoted[self.playerVote[cur[0]]] -= 1
                             except:
-                                self.sendMessage('参数不在范围内')
-                    except:
-                        self.sendMessage('分数不足')
+                                pass
+                            self.playerVote[cur[0]] = int(tmp[1])
+                            self.mapVoted[self.playerVote[cur[0]]] += 1
+                            self.sendMessage('vote for ' + tmp[1])
+                        else:
+                            self.sendMessage('参数不在范围内')
+                    else:
+                        try:
+                            try:
+                                if self.playerVote[cur[0]] != 0:
+                                    self.mapVoted[self.playerVote[cur[0]]] -= 1
+                            except:
+                                pass
+                            self.playerVote[cur[0]] = int(self.mapNameToMapID[tmp[1]])
+                            self.mapVoted[self.playerVote[cur[0]]] += 1
+                            self.sendMessage('vote for ' + tmp[1])
+                        except:
+                            self.sendMessage('参数不在范围内')
+                elif tot == 0:
+                    self.sendMessage(str(self.mapVoted))
             else:
                 self.sendMessage('分数不足')
         if tmp[0] == 'send':
@@ -383,6 +386,37 @@ class Bot(object):
                             self.sendMessage('分数不足')
             else:
                 self.sendMessage('分数不足')
+        if tmp[0] == 'draw':
+            if tot != 1:
+                self.sendMessage('需要1个参数，发现' + str(tot) + '个')
+            else:
+                try:
+                    cnt = int(tmp[1])
+                except:
+                    self.sendMessage('参数应为整数')
+                else:
+                    if cnt <= 0:
+                        self.sendMessage('参数不在范围内')
+                    elif self.UpdateScore(cur[0], 10 * cnt):
+                        res = 0
+                        role = [[3, 0.2], [10, 0.1], [87, 0]]
+                        for i in range(cnt):
+                            curtry = random.randint(1, 100)
+                            rate = 0
+                            for j in role:
+                                rate += j[0]
+                                if curtry <= rate:
+                                    pos = int(self.score[self.username] * j[1])
+                                    res += pos
+                                    self.score[self.username] -= pos
+                                    break
+                        try:
+                            self.score[cur[0]] += res
+                        except:
+                            self.score[cur[0]] = res
+                        self.sendMessage('恭喜获得' + str(res) + '分')
+                    else:
+                        self.sendMessage('分数不足')
         if tmp[0] == 'kill':
             if cur[0] == self.controller:
                 self.Kill()
@@ -409,15 +443,10 @@ class Bot(object):
         if tmp[0] == 'readdata':
             if cur[0] == self.controller:
                 try:
-                    self.score = {}
-                    data = open('data', mode='r')
-                    s = data.readlines()
-                    n = int(s[0].strip())
-                    for i in range(n):
-                        uname = s[2 * i + 1].strip()
-                        score = int(s[2 * (i + 1)].strip())
-                        self.score[uname] = score
-                    data.close()
+                    if tot == 1:
+                        self.readData(tmp[1])
+                    else:
+                        self.readData()
                     self.sendMessage('read')
                 except:
                     self.sendMessage('error')
@@ -427,6 +456,12 @@ class Bot(object):
             if cur[0] == self.controller:
                 self.isAutoSave = not self.isAutoSave
                 self.sendMessage('autosave = ' + str(self.isAutoSave))
+            else:
+                self.sendMessage('权限不足')
+        if tmp[0] == 'setscore':
+            if cur[0] == self.controller:
+                self.score[tmp[1]] = int(tmp[2])
+                self.sendMessage('score = ' + tmp[2])
             else:
                 self.sendMessage('权限不足')
         return
@@ -634,7 +669,9 @@ class Bot(object):
     def botMove(self):
         sleep(self.TIME_PER_TURN)
         self.CommandLine()
-        self.selectedMap = self.defaultSelectedMap
+        self.playerVote = {}
+        self.mapVoted = {1: 0, 2: 0, 3: 0, 5: 0, 6: 0, 7: 0}
+        self.mapVoted[int(self.defaultSelectedMap)] = 1
         x = 0
         y = 0
         tryTime = 0
@@ -726,32 +763,34 @@ class Bot(object):
         self.freeTime = 0
         self.table = self.driver.find_element_by_tag_name("tbody")
         flag = False
+        lastSaveTime = 0
         while True:
-            if self.driver.current_url == "https://kana.byha.top:444/":
+            if self.driver.current_url == "https://kana.byha.top:444":
                 self.EnterRoom()
                 sleep(self.TIME_PER_TURN * 5)
                 continue
             try:
                 tmp = self.driver.find_element_by_id("swal2-content").get_attribute('innerText')
                 tmp = tmp[0:tmp.find("赢了")]
-                print(tmp)
-                if tmp == '':
-                    continue
-                try:
-                    self.userCount = int(
-                        self.driver.find_element_by_id("total-user").text)
-                except:
-                    self.userCount = 2
-                addtmp = (self.userCount - 1) ** 2
-                print(self.userCount)
-                if tmp in self.score:
-                    self.score[tmp] += addtmp
-                else:
-                    self.score[tmp] = addtmp
-                ac = ActionChains(self.driver)
-                ac.send_keys(Keys.ENTER).perform()
+                if tmp != '':
+                    try:
+                        self.userCount = int(
+                            self.driver.find_element_by_id("total-user").text)
+                    except:
+                        self.userCount = 2
+                    addtmp = (self.userCount - 1) ** 2
+                    if tmp in self.score:
+                        self.score[tmp] += addtmp
+                    else:
+                        self.score[tmp] = addtmp
+                    ac = ActionChains(self.driver)
+                    ac.send_keys(Keys.ENTER).perform()
             except:
                 pass
+            # try:
+            #     self.driver.find_element_by_class_name('swal2-confirm swal2-styled').click()
+            # except:
+            #     pass
             try:
                 if self.isAutoReady and self.driver.find_element_by_id("ready").get_attribute('innerHTML') == "准备":
                     self.Ready()
@@ -762,6 +801,9 @@ class Bot(object):
                 pass
             if self.isAutoSave and self.freeTime == 1:
                 self.saveData()
+                if time.time() - lastSaveTime >= 1800:
+                    lastSaveTime = time.time()
+                    self.saveData('data' + str(time.time()))
             self.CommandLine()
             self.Pr('F')  # 防踢
             self.GetMap()
@@ -776,6 +818,13 @@ class Bot(object):
                 checkBox = self.driver.find_element_by_class_name("form-check-input")  # 防私密
                 if (checkBox.is_selected() and not self.isSecret) or (not (checkBox.is_selected()) and self.isSecret):
                     checkBox.click()
+                current = list(self.mapVoted.keys())
+                currentList = []
+                cmp = lambda s1: s1[1]
+                for i in current:
+                    currentList.append([i, self.mapVoted[i]])
+                currentList.sort(key=cmp, reverse=True)
+                self.selectedMap = str(currentList[0][0])
                 randomBtn = self.driver.find_element_by_css_selector('[data="' + self.selectedMap + '"]')
                 randomBtn.click()
             except:
