@@ -21,7 +21,7 @@ class Node:
     def __init__(self, tmp=0, belong=0, type='land'):
         self.tmp = tmp
         self.belong = belong  # 1 0
-        self.type = type  # land city general unknown mountain empty
+        self.type = type  # land city general unknown mountain empty empty-city
 
 
 def distRouteNode(a, b):
@@ -47,7 +47,10 @@ class Map:
 
     def getCost(self, a):
         if self.mp[a[0]][a[1]].belong == 0:
-            return max(self.mp[a[0]][a[1]].tmp // 10, 2)
+            if self.mp[a[0]][a[1]].type == 'city':
+                return max(self.mp[a[0]][a[1]].tmp, 10)
+            else:
+                return max(self.mp[a[0]][a[1]].tmp // 10, 2)
         else:
             return 1
 
@@ -92,6 +95,16 @@ class Map:
                     tmp.append([i, j])
         return tmp
 
+    def findMax(self, flt):
+        x = self.findMatch(flt)
+        maxx = 0
+        ans = []
+        for i in x:
+            if self.mp[i[0]][i[1]].tmp > maxx:
+                maxx = self.mp[i[0]][i[1]].tmp
+                ans = i
+        return ans
+
     def findMatchByRange(self, x, y, rg, flt):
         tmp = []
         for i in range(x - rg, x + rg + 1):
@@ -99,18 +112,6 @@ class Map:
                 if 1 <= i <= self.size and 1 <= j <= self.size and flt(self.mp[i][j]):
                     tmp.append([i, j])
         return tmp
-
-    def getOwnedMax(self):
-        maxx = 0
-        ansx = 0
-        ansy = 0
-        for i in range(1, self.size + 1):
-            for j in range(1, self.size + 1):
-                if self.mp[i][j].belong == 1 and self.mp[i][j].tmp > maxx:
-                    maxx = self.mp[i][j].tmp
-                    ansx = i
-                    ansy = j
-        return [ansx, ansy]
 
 
 class Bot(object):
@@ -126,6 +127,7 @@ class Bot(object):
         self.isAutoReady = isAutoReady  # 是否主动准备
         self.mp = Map()
         self.selectedMap = '1'
+        self.ondefend = False
 
     def SendKeyToTable(self, key):
         ac = ActionChains(self.driver)
@@ -171,8 +173,10 @@ class Bot(object):
             for j in range(1, self.mp.size + 1):
                 p = stype[0]
                 stype.pop(0)
-                if p.find(" city ") != -1 or p.find(" empty-city ") != -1:
+                if p.find(" city ") != -1:
                     self.mp.mp[i][j].type = 'city'
+                elif p.find(' empty-city ') != -1:
+                    self.mp.mp[i][j].type = 'empty-city'
                 elif p.find(" crown ") != -1:
                     self.mp.mp[i][j].type = 'general'
                 elif p.find(" mountain ") != -1 or p.find(" obstacle ") != -1 or p.find(" gas ") != -1:
@@ -265,7 +269,7 @@ class Bot(object):
         self.GetMap()
         self.updateMap()
         trytime = 0
-        while self.mp.mp[self.homex][self.homey].tmp == tmp and trytime <= 100:
+        while self.mp.mp[self.homex][self.homey].tmp == tmp and trytime <= 80:
             self.GetMap()
             trytime += 1
         return
@@ -309,14 +313,32 @@ class Bot(object):
         if [self.curx, self.cury] not in self.vis:
             self.vis.append([self.curx, self.cury])
         self.updateMap()
-        mx = self.mp.getOwnedMax()
+        mx = self.mp.findMax(lambda a: a.belong == 1)
         if self.mp.mp[mx[0]][mx[1]].tmp <= 5:
             return
         if self.homes:
+            if self.mp.mp[mx[0]][mx[1]].tmp > 30 and self.mp.mp[mx[0]][mx[1]].type == 'general':
+                tmp = self.mp.findMax(lambda a: a.type != 'general' and a.belong == 1)
+                if self.mp.mp[tmp[0]][tmp[1]].tmp * 3 > self.mp.mp[mx[0]][mx[1]].tmp:
+                    mx = tmp
             self.SelectLand(mx[0], mx[1])
             tmp = random.choice(self.homes)
             self.moveTo(tmp[0], tmp[1])
             return
+        tmp = self.mp.findMatchByRange(self.homex, self.homey, 1,
+                                       lambda a: a.belong == 0 and (a.type == 'land' or a.type == 'city'))
+        if tmp and self.mp.mp[mx[0]][mx[1]].tmp > 30:
+            mx = self.mp.findMax(lambda a: a.type != 'general' and a.belong == 1)
+            self.SelectLand(mx[0], mx[1])
+            tmp = random.choice(tmp)
+            self.moveTo(tmp[0], tmp[1])
+            self.ondefend = True
+            return
+        if self.ondefend and dist(self.curx, self.cury, self.homex, self.homey) <= 2:
+            self.moveTo(self.homex, self.homey)
+            self.ondefend = False
+            return
+        self.ondefend = False
         tmp = self.mp.findMatch(lambda a: a.type == 'unknown')
         random.shuffle(tmp)
         role = lambda a: len(self.mp.findMatchByRange(a[0], a[1], 4, lambda b: b.type == 'land' and b.belong == 0))
@@ -325,7 +347,9 @@ class Bot(object):
             if [i[0], i[1]] not in self.vis:
                 target = i
                 break
-        owned = self.mp.findMatch(lambda a: a.belong == 1)
+        owned = self.mp.findMatch(lambda a: a.belong == 1 and a.tmp >= self.mp.mp[target[0]][target[1]].tmp)
+        if not owned:
+            owned = [[self.homex, self.homey]]
         random.shuffle(owned)
         mindist = 10000
         ans = []
@@ -335,6 +359,8 @@ class Bot(object):
                 mindist = p
                 ans = i
         if ans:
+            if ans[0] == self.homex and ans[1] == self.homey:
+                self.SendKeyToTable('Z')
             self.SelectLand(ans[0], ans[1])
             self.moveTo(target[0], target[1])
         return
@@ -363,17 +389,17 @@ class Bot(object):
             except:
                 continue
             try:
-                if self.isAutoReady and self.driver.find_element_by_id("ready").get_attribute('innerHTML') == "准备":
-                    ac = ActionChains(self.driver)
-                    ac.click(self.driver.find_element_by_id("ready")).perform()
-            except:
-                pass
-            try:
                 checkBox = self.driver.find_element_by_class_name("form-check-input")  # 防私密
                 if (checkBox.is_selected() and not self.isSecret) or (not (checkBox.is_selected()) and self.isSecret):
                     checkBox.click()
                 randomBtn = self.driver.find_element_by_css_selector('[data="' + self.selectedMap + '"]')
                 randomBtn.click()
+            except:
+                pass
+            try:
+                if self.isAutoReady and self.driver.find_element_by_id("ready").get_attribute('innerHTML') == "准备":
+                    ac = ActionChains(self.driver)
+                    ac.click(self.driver.find_element_by_id("ready")).perform()
             except:
                 pass
         return
