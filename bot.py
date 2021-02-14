@@ -2,12 +2,14 @@ import random
 import re
 from queue import PriorityQueue
 from time import sleep
-
+import time
 from selenium import webdriver
 from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.action_chains import ActionChains
 from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
+from selenium.webdriver.common.keys import Keys
+import datetime
 
 
 def dist(xx1, yy1, xx2, yy2):
@@ -36,7 +38,7 @@ class Map:
     def __init__(self):
         self.resize(20)
 
-    def getNeighbours(self, a):
+    def getNeighbours(self, a):  # 获取邻居
         tmp = []
         for i in dir:
             px = a[0] + i[0]
@@ -45,12 +47,9 @@ class Map:
                 tmp.append((px, py))
         return tmp
 
-    def getCost(self, a):
+    def getCost(self, a):  # 获取通过这块土地的花费
         if self.mp[a[0]][a[1]].belong == 0:
-            if self.mp[a[0]][a[1]].type == 'city':
-                return max(self.mp[a[0]][a[1]].tmp, 10)
-            else:
-                return max(self.mp[a[0]][a[1]].tmp // 10, 2)
+            return max(self.mp[a[0]][a[1]].tmp, 1)
         else:
             return 1
 
@@ -79,15 +78,15 @@ class Map:
             current = came_from[current]
         path.append(start)
         path.reverse()
-        return path
+        return path, cost_so_far[goal]
 
-    def findPath(self, sx, sy, ex, ey):
+    def findPath(self, sx, sy, ex, ey):  # 查找路径
         if self.mp[sx][sy].type == 'mountain' or self.mp[ex][ey].type == 'mountain':
             return []
-        path = self.AStar((sx, sy), (ex, ey))
-        return path
+        path, cost = self.AStar((sx, sy), (ex, ey))
+        return path, cost
 
-    def findMatch(self, flt):
+    def findMatch(self, flt):  # 查找所有满足flt的格子
         tmp = []
         for i in range(1, self.size):
             for j in range(1, self.size):
@@ -95,7 +94,7 @@ class Map:
                     tmp.append([i, j])
         return tmp
 
-    def findMax(self, flt):
+    def findMax(self, flt):  # 查找满足flt的格子中兵力最大的
         x = self.findMatch(flt)
         maxx = 0
         ans = []
@@ -105,7 +104,7 @@ class Map:
                 ans = i
         return ans
 
-    def findMatchByRange(self, x, y, rg, flt):
+    def findMatchByRange(self, x, y, rg, flt):  # 在(x, y)的rg范围内查找所有满足flt的格子
         tmp = []
         for i in range(x - rg, x + rg + 1):
             for j in range(y - rg, y + rg + 1):
@@ -116,24 +115,40 @@ class Map:
 
 class Bot(object):
 
-    def __init__(self, username, password, roomId, isSecret, isAutoReady=True):
+    def __init__(self, username, password, roomId, isSecret, controller, isAutoReady=True):
         self.kanaLink = "https://kana.byha.top:444/"
         self.driver = webdriver.Chrome()  # 浏览器
-        # self.driver = webver.Firefox()
+        # self.driver = webdriver.Firefox()
         self.username = username  # 用户名
         self.password = password  # 密码
         self.roomId = roomId  # 房间号
         self.isSecret = isSecret  # 是否为私密房间
         self.isAutoReady = isAutoReady  # 是否主动准备
-        self.mp = Map()
+        self.mp = Map()  # 地图
+        self.isAutoSave = False
         self.selectedMap = '1'
         self.ondefend = False
+        self.controller = controller
+        self.wintime = {}
+        self.score = {}
+        self.userCount = 2
+
+        self.commands = {'help (command)': ['查看命令列表（或命令command的用法）', 0],
+                         'query (i)': ['查询自己（或玩家i）的分数', 0],
+                         'send [uname] [x]': ['赠送x点分数给用户名为uname的玩家', 5],
+                         'draw [n]': ['抽奖n次', '10*n']}
+        self.aToB = {'help': 'help (command)', 'query': 'query (i)', 'send': 'send [uname] [x]', 'draw': 'draw [n]'}
+        self.tips = ['Bot会智能守家', '<del>杀死Bot的次数越多越容易触发特异性打击</del>', '<del>Bot已参战</del>', '<del>如果没有足够实力请不要与Bot单挑</del>',
+                     '<del>输入INFO可以获取实力排行榜</del>']
+        tmp = list(self.commands.keys())
+        for x in tmp:
+            self.tips.append('命令' + x + ': ' + self.commands[x][0] + '（花费' + str(self.commands[x][1]) + '点分数）')
 
     def SendKeyToTable(self, key):
         ac = ActionChains(self.driver)
         ac.send_keys(key).perform()
 
-    def EnterRoom(self):
+    def EnterRoom(self):  # 进入房间
         self.driver.get(
             "https://kana.byha.top:444/checkmate/room/" + self.roomId)
         if self.isSecret:
@@ -142,6 +157,7 @@ class Bot(object):
             ac = ActionChains(self.driver)
             ac.click(settingBtn).perform()
         print("Bot已就位！")
+        self.url = self.driver.current_url
 
     def GetMap(self):  # 获得地图
         try:
@@ -199,6 +215,27 @@ class Bot(object):
                     self.mp.mp[i][j].tmp = 0
         return
 
+    def GetMessage(self):  # 获取消息
+        try:
+            s = self.driver.find_element_by_id("msg-container").get_attribute("innerHTML")
+        except:
+            self.EnterRoom()
+            return
+        self.msg = []
+        while True:
+            tmp = re.search(r'<p>[\s\S]*?</p>', s)
+            if tmp:
+                g = tmp.group()
+                g = re.sub(r'&nbsp;', '', g)
+                g = g[3:len(g) - 4]
+                p = g.find(':')
+                self.msg.append([g[0:p], g[p + 2:len(g)]])
+                p = s.find(g)
+                s = s[p + len(g):len(s)]
+            else:
+                break
+        return
+
     def SelectLand(self, x, y):  # 选择土地
         try:
             self.driver.find_element_by_id(
@@ -209,7 +246,223 @@ class Bot(object):
         except:
             return
 
-    def Login(self):
+    def UpdateScore(self, uname, cost):
+        if uname == self.controller:
+            return True
+        try:
+            if self.score[uname] < cost:
+                return False
+            else:
+                self.score[uname] -= cost
+                self.score[self.username] += cost
+                return True
+        except:
+            return False
+
+    def getscore(self, uname):
+        if uname in self.score:
+            return self.score[uname]
+        else:
+            return 0
+
+    def addscore(self, uname, x):
+        if uname in self.score:
+            self.score[uname] += x
+        else:
+            self.score[uname] = x
+
+    def gettime(self, uname):
+        if uname in self.wintime:
+            return self.wintime[uname]
+        else:
+            return 0
+
+    def addtime(self, uname, x):
+        if uname in self.wintime:
+            self.wintime[uname] += x
+        else:
+            self.wintime[uname] = x
+        return
+
+    def readData(self):
+        self.wintime = {}
+        data = open('wintime', mode='r')
+        s = data.readlines()
+        n = int(s[0].strip())
+        for i in range(n):
+            uname = s[2 * i + 1].strip()
+            wintime = int(s[2 * (i + 1)].strip())
+            self.wintime[uname] = wintime
+        data.close()
+
+        self.score = {}
+        data = open('score', mode='r')
+        s = data.readlines()
+        n = int(s[0].strip())
+        for i in range(n):
+            uname = s[2 * i + 1].strip()
+            score = int(s[2 * (i + 1)].strip())
+            self.score[uname] = score
+        data.close()
+        return
+
+    def saveData(self):
+        uname = list(self.wintime.keys())
+        data = open('wintime', mode='w')
+        data.write(str(len(uname)) + '\n')
+        for i in uname:
+            data.write(i + '\n')
+            data.write(str(self.wintime[i]) + '\n')
+        data.flush()
+        data.close()
+
+        uname = list(self.score.keys())
+        data = open('score', mode='w')
+        data.write(str(len(uname)) + '\n')
+        for i in uname:
+            data.write(i + '\n')
+            data.write(str(self.score[i]) + '\n')
+        data.flush()
+        data.close()
+        return
+
+    def CommandLine(self):  # 命令行
+        self.GetMessage()
+        cur = self.msg[len(self.msg) - 1]
+        tmp = ['']
+        tot = 0
+        for i in range(0, len(cur[1])):
+            if cur[1][i] == ' ' and (i == 0 or cur[1][i - 1] != ' '):
+                tot += 1
+                tmp.append('')
+            elif cur[1][i] != ' ':
+                tmp[tot] += cur[1][i]
+        if tmp[0] == 'help':
+            if tot == 0:
+                msg = '<strong>命令列表：</strong><br>'
+                tmp = list(self.aToB.keys())
+                for x in tmp:
+                    msg += x + ', '
+                self.sendMessage(msg)
+                self.sendMessage('提示：输入help [command]以查询命令command的用法')
+            elif tot == 1:
+                try:
+                    x = self.aToB[tmp[1]]
+                    self.sendMessage('命令' + x + ': ' + self.commands[x][0] + '（花费' + str(
+                        self.commands[x][1]) + '点分数）')
+                except:
+                    self.sendMessage('未找到该命令')
+            else:
+                self.sendMessage('需要0或1个参数，发现' + str(tot) + '个')
+        if tmp[0] == 'query':
+            if tot != 0 and tot != 1:
+                self.sendMessage('需要0或1个参数，发现' + str(tot) + '个')
+            elif tot == 0:
+                self.sendMessage(str(self.getscore(cur[0])) + '分')
+            elif tot == 1:
+                self.sendMessage(str(self.getscore(tmp[1])) + '分')
+        if tmp[0] == 'send':
+            if self.UpdateScore(cur[0], self.commands['send [uname] [x]'][1]):
+                if tot != 2:
+                    self.sendMessage('需要2个参数，发现' + str(tot) + '个')
+                else:
+                    try:
+                        x = int(tmp[2])
+                        if x <= 0:
+                            raise ValueError('')
+                    except:
+                        self.sendMessage('参数不在范围内')
+                    else:
+                        if x > self.getscore(cur[0]):
+                            self.sendMessage('分数不足')
+                        else:
+                            self.score[cur[0]] -= x
+                            self.addscore(tmp[1], x)
+                            self.sendMessage('成功')
+            else:
+                self.sendMessage('分数不足')
+        if tmp[0] == 'draw':
+            if tot != 1:
+                self.sendMessage('需要1个参数，发现' + str(tot) + '个')
+            else:
+                try:
+                    cnt = int(tmp[1])
+                except:
+                    self.sendMessage('参数应为整数')
+                else:
+                    if cnt <= 0:
+                        self.sendMessage('参数不在范围内')
+                    elif self.UpdateScore(cur[0], 10 * cnt):
+                        res = 0
+                        role = [[3, 0.2], [10, 0.1], [87, 0]]
+                        for i in range(cnt):
+                            curtry = random.randint(1, 100)
+                            rate = 0
+                            for j in role:
+                                rate += j[0]
+                                if curtry <= rate:
+                                    pos = int((self.score[self.username] - 10 * cnt) * j[1])
+                                    res += pos
+                                    self.score[self.username] -= pos
+                                    break
+                        self.addscore(cur[0], res)
+                        self.sendMessage('恭喜获得' + str(res) + '分')
+                    else:
+                        self.sendMessage('分数不足')
+        if tmp[0] == 'kill':
+            if cur[0] == self.controller:
+                self.driver.close()
+                del self
+            else:
+                self.sendMessage('权限不足')
+        if tmp[0] == 'enter':
+            if cur[0] == self.controller:
+                self.roomId = tmp[1]
+                self.EnterRoom()
+            else:
+                self.sendMessage('权限不足')
+        if tmp[0] == 'setsecret':
+            if cur[0] == self.controller:
+                self.isSecret = not self.isSecret
+                self.sendMessage('secret = ' + str(self.isSecret))
+            else:
+                self.sendMessage('权限不足')
+        if tmp[0] == 'savedata':
+            if cur[0] == self.controller:
+                self.saveData()
+                self.sendMessage('saved')
+            else:
+                self.sendMessage('权限不足')
+        if tmp[0] == 'readdata':
+            if cur[0] == self.controller:
+                try:
+                    self.readData()
+                    self.sendMessage('read')
+                except:
+                    self.sendMessage('error')
+            else:
+                self.sendMessage('权限不足')
+        if tmp[0] == 'setautosave':
+            if cur[0] == self.controller:
+                self.isAutoSave = not self.isAutoSave
+                self.sendMessage('autosave = ' + str(self.isAutoSave))
+            else:
+                self.sendMessage('权限不足')
+        if tmp[0] == 'setscore':
+            if cur[0] == self.controller:
+                self.score[tmp[1]] = int(tmp[2])
+                self.sendMessage('score = ' + tmp[2])
+            else:
+                self.sendMessage('权限不足')
+        if tmp[0] == 'settime':
+            if cur[0] == self.controller:
+                self.wintime[tmp[1]] = int(tmp[2])
+                self.sendMessage('wintime = ' + tmp[2])
+            else:
+                self.sendMessage('权限不足')
+        return
+
+    def Login(self):  # 登录
         print("正在登录…")
         self.driver.get(self.kanaLink)
         usernameBox = self.driver.find_element_by_name("username")
@@ -229,8 +482,8 @@ class Bot(object):
             self.driver.close()
             del self
 
-    def moveTo(self, x, y):
-        path = self.mp.findPath(self.curx, self.cury, x, y)
+    def moveTo(self, x, y):  # 移动
+        path, cost = self.mp.findPath(self.curx, self.cury, x, y)
         if path:
             path.pop(0)
             cx = self.curx
@@ -251,7 +504,7 @@ class Bot(object):
                 path.pop(0)
         return
 
-    def flushMovements(self):
+    def flushMovements(self):  # 更新移动
         tmp = self.mp.mp[self.homex][self.homey].tmp
         self.SendKeyToTable(self.movements[0])
         if self.mp.mp[self.curx][self.cury].belong == 0:
@@ -274,7 +527,7 @@ class Bot(object):
             trytime += 1
         return
 
-    def pre(self):
+    def pre(self):  # 预处理地图
         tmp = self.mp.findMatch(lambda a: a.type == 'general' and a.belong == 1)
         if len(tmp) != 1:
             return 1
@@ -285,22 +538,42 @@ class Bot(object):
         self.movements = []
         self.homes = []
         self.vis = []
-        self.ispre = True
+        self.ispre = True  # 是否预处理
+        self.useless = []
+        self.preland = []
         return 0
 
-    def updateMap(self):
+    def sendMessage(self, msg):  # 发送消息
+        if len(msg) >= 92:
+            self.sendMessage(msg[0:90])
+            self.sendMessage(msg[90:len(msg)])
+        messageBox = self.driver.find_element_by_id("msg-sender")
+        ac = ActionChains(self.driver)
+        ac.send_keys_to_element(messageBox, msg)
+        ac.send_keys(Keys.ENTER).perform()
+        return
+
+    def updateMap(self):  # 分析地图
         tmp = self.mp.findMatch(lambda a: a.type == 'general' and a.belong == 0)
         if tmp:
             for i in tmp:
-                if i not in self.homes:
+                if i not in self.homes:  # 找家
                     self.homes.append(i)
         tmp = self.mp.findMatch(lambda a: a.type != 'unknown')
         for i in tmp:
-            if i not in self.vis:
+            if i not in self.vis:  # 已经可见的土地无需探索
                 self.vis.append(i)
+        if not self.preland:
+            self.preland = self.mp.findMatch(lambda a: a.type == 'empty' or a.belong == 1)
+        else:
+            enemy = self.mp.findMatch(lambda a: a.belong == 0)
+            for i in enemy:
+                if i in self.preland and i not in self.useless:  # 之前是空地或己方土地，现在是敌方土地，无需探索
+                    self.useless.append(i)
+            self.preland = []
         return
 
-    def botMove(self):
+    def botMove(self):  # 主循环，每回合执行一次
         self.GetMap()
         if not self.ispre:
             if self.pre() == 1:
@@ -308,7 +581,7 @@ class Bot(object):
         if self.movements:
             self.flushMovements()
             return
-        if [self.curx, self.cury] in self.homes and self.mp.mp[self.curx][self.cury].belong == 1:
+        if [self.curx, self.cury] in self.homes and self.mp.mp[self.curx][self.cury].belong == 1:  # 已经占领的家移除
             self.homes.remove([self.curx, self.cury])
         if [self.curx, self.cury] not in self.vis:
             self.vis.append([self.curx, self.cury])
@@ -316,7 +589,7 @@ class Bot(object):
         mx = self.mp.findMax(lambda a: a.belong == 1)
         if self.mp.mp[mx[0]][mx[1]].tmp <= 5:
             return
-        if self.homes:
+        if self.homes:  # 智能掏家
             if self.mp.mp[mx[0]][mx[1]].tmp > 30 and self.mp.mp[mx[0]][mx[1]].type == 'general':
                 tmp = self.mp.findMax(lambda a: a.type != 'general' and a.belong == 1)
                 if self.mp.mp[tmp[0]][tmp[1]].tmp * 3 > self.mp.mp[mx[0]][mx[1]].tmp:
@@ -327,7 +600,7 @@ class Bot(object):
             return
         tmp = self.mp.findMatchByRange(self.homex, self.homey, 1,
                                        lambda a: a.belong == 0 and (a.type == 'land' or a.type == 'city'))
-        if tmp and self.mp.mp[mx[0]][mx[1]].tmp > 30:
+        if tmp and self.mp.mp[mx[0]][mx[1]].tmp > 30:  # 智能守家
             mx = self.mp.findMax(lambda a: a.type != 'general' and a.belong == 1)
             self.SelectLand(mx[0], mx[1])
             tmp = random.choice(tmp)
@@ -341,7 +614,8 @@ class Bot(object):
         self.ondefend = False
         tmp = self.mp.findMatch(lambda a: a.type == 'unknown')
         random.shuffle(tmp)
-        role = lambda a: len(self.mp.findMatchByRange(a[0], a[1], 4, lambda b: b.type == 'land' and b.belong == 0))
+        role = lambda a: len(self.mp.findMatchByRange(a[0], a[1], 4, lambda b: b.type == 'land' and b.belong == 0 and (
+                a not in self.useless)))
         tmp.sort(key=role, reverse=True)
         for i in tmp:
             if [i[0], i[1]] not in self.vis:
@@ -356,9 +630,11 @@ class Bot(object):
         for i in owned:
             p = dist(i[0], i[1], target[0], target[1])
             if p < self.mp.mp[i[0]][i[1]].tmp and p < mindist:
-                mindist = p
-                ans = i
-        if ans:
+                path, cost = self.mp.findPath(self.curx, self.cury, target[0], target[1])
+                if self.mp.mp[i[0]][i[1]].tmp >= cost:
+                    mindist = p
+                    ans = i
+        if ans:  # 探索
             if ans[0] == self.homex and ans[1] == self.homey:
                 self.SendKeyToTable('Z')
             self.SelectLand(ans[0], ans[1])
@@ -370,12 +646,23 @@ class Bot(object):
         self.EnterRoom()
         self.table = self.driver.find_element_by_tag_name("tbody")
         flag = False
+        ban = 0
+        lastupdatetime = 0
+        freetime = 0
         while True:
-            if self.driver.current_url != "https://kana.byha.top:444/checkmate/room/" + self.roomId:
+            if self.driver.current_url != self.url:
                 self.EnterRoom()
                 sleep(10)
                 continue
             self.SendKeyToTable('F')  # 防踢
+            self.CommandLine()
+            curTime = datetime.datetime.now()
+            if curTime.hour == 0 and curTime.minute == 0 and time.time() - lastupdatetime > 3600:
+                lastupdatetime = time.time()
+                uname = list(self.wintime.keys())
+                for i in uname:
+                    if self.getscore(i) >= 0:
+                        self.wintime[i] = 0
             try:
                 if self.driver.find_element_by_id("game-status").get_attribute('innerHTML') != "游戏中":
                     if flag:
@@ -383,11 +670,37 @@ class Bot(object):
                     sleep(0.2)
                     self.ispre = False
                 else:
+                    freetime = 0
                     self.botMove()
                     continue
                 flag = True
             except:
                 continue
+            freetime += 1
+            if freetime % 480 == 10 and not self.isSecret:
+                self.sendMessage("【提示】" + random.choice(self.tips))
+            try:
+                tmp = self.driver.find_element_by_id("swal2-content").get_attribute('innerText')
+                tmp = tmp[0:tmp.find("赢了")]
+                if tmp != '':
+                    ac = ActionChains(self.driver)
+                    ac.send_keys(Keys.ENTER).perform()
+                    if self.getscore(tmp) < 0 and self.mp.size in [9, 10]:
+                        ban = time.time()
+                    elif tmp != self.username and self.mp.size in [9, 10]:
+                        self.addtime(tmp, 1)
+                        if self.wintime[tmp] > 30:
+                            self.sendMessage('您已被封禁')
+                            self.score[tmp] = -3000
+                            ban = time.time()
+                        else:
+                            self.sendMessage('您已单挑' + str(self.wintime[tmp]) + '次')
+                    addtmp = (self.userCount - 1) ** 2
+                    self.addscore(tmp, addtmp)
+                    if self.isAutoSave:
+                        self.saveData()
+            except:
+                pass
             try:
                 checkBox = self.driver.find_element_by_class_name("form-check-input")  # 防私密
                 if (checkBox.is_selected() and not self.isSecret) or (not (checkBox.is_selected()) and self.isSecret):
@@ -397,13 +710,22 @@ class Bot(object):
             except:
                 pass
             try:
-                if self.isAutoReady and self.driver.find_element_by_id("ready").get_attribute('innerHTML') == "准备":
+                if self.isAutoReady and self.driver.find_element_by_id("ready").get_attribute(
+                        'innerHTML') == "准备" and time.time() - ban > 600:
                     ac = ActionChains(self.driver)
                     ac.click(self.driver.find_element_by_id("ready")).perform()
+                if self.driver.find_element_by_id("ready").get_attribute(
+                        'innerHTML') == "取消准备" and time.time() - ban <= 600:
+                    ac = ActionChains(self.driver)
+                    ac.click(self.driver.find_element_by_id("ready")).perform()
+            except:
+                pass
+            try:
+                self.userCount = int(self.driver.find_element_by_id("total-user").text)
             except:
                 pass
         return
 
 
-a = Bot(input("输入用户名："), input("输入密码："), input("输入房间号："), input("是否私密？(Y/N)") == "Y")
+a = Bot(input("输入用户名："), input("输入密码："), input("输入房间号："), input("是否私密？(Y/N)") == "Y", input('输入控制者：'))
 a.Main()
