@@ -10,6 +10,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.common.keys import Keys
 import datetime
+import threading
 
 
 def dist(xx1, yy1, xx2, yy2):
@@ -22,7 +23,7 @@ dir = [[-1, 0], [0, 1], [1, 0], [0, -1]]
 class Node:
     def __init__(self, tmp=0, belong=0, type='land'):
         self.tmp = tmp
-        self.belong = belong  # 1 0
+        self.belong = belong  # 1 ...
         self.type = type  # land city general unknown mountain empty empty-city
 
 
@@ -48,10 +49,10 @@ class Map:
         return tmp
 
     def getCost(self, a):  # 获取通过这块土地的花费
-        if self.mp[a[0]][a[1]].belong == 0:
-            return max(self.mp[a[0]][a[1]].tmp, 1)
-        else:
+        if self.mp[a[0]][a[1]].belong == 1:
             return 1
+        else:
+            return max(self.mp[a[0]][a[1]].tmp, 1)
 
     def AStar(self, start, goal):  # https://blog.csdn.net/adamshan/article/details/79945175
         frontier = PriorityQueue()
@@ -130,19 +131,21 @@ class Bot(object):
         self.ondefend = False
         self.controller = controller
         self.wintime = {}
-        self.score = {}
+        self.Rating = {}
         self.userCount = 2
+        self.colortousername = {}
 
-        self.commands = {'help (command)': ['查看命令列表（或命令command的用法）', 0],
-                         'query (i)': ['查询自己（或玩家i）的分数', 0],
-                         'send [uname] [x]': ['赠送x点分数给用户名为uname的玩家', 5],
-                         'draw [n]': ['抽奖n次', '10*n']}
-        self.aToB = {'help': 'help (command)', 'query': 'query (i)', 'send': 'send [uname] [x]', 'draw': 'draw [n]'}
+        self.commands = {'help (command)': '查看命令列表（或命令command的用法）',
+                         'query (i)': '查询自己（或玩家i）的Rating',
+                         'info': '获取Rating排行榜前10名'}
+        self.aToB = {'help': 'help (command)', 'info': 'info', 'query': 'query (i)'}
         self.tips = ['Bot会智能守家', '<del>杀死Bot的次数越多越容易触发特异性打击</del>', '<del>Bot已参战</del>', '<del>如果没有足够实力请不要与Bot单挑</del>',
                      '<del>输入INFO可以获取实力排行榜</del>']
         tmp = list(self.commands.keys())
         for x in tmp:
-            self.tips.append('命令' + x + ': ' + self.commands[x][0] + '（花费' + str(self.commands[x][1]) + '点分数）')
+            self.tips.append('命令' + x + ': ' + self.commands[x])
+
+        self.t_command = threading.Thread(target=self.CommandLine, name="command")  # 命令行线程
 
     def SendKeyToTable(self, key):
         ac = ActionChains(self.driver)
@@ -185,6 +188,8 @@ class Bot(object):
         self.mp.resize(int(cnt ** 0.5))
         if not (self.mp.size == 9 or self.mp.size == 10 or self.mp.size == 19 or self.mp.size == 20):
             return
+        if len(self.colortousername) > 0:
+            c = list(self.colortousername.keys())
         for i in range(1, self.mp.size + 1):
             for j in range(1, self.mp.size + 1):
                 p = stype[0]
@@ -205,8 +210,14 @@ class Bot(object):
                     self.mp.mp[i][j].type = 'unknown'
                 if p.find(" own ") != -1:
                     self.mp.mp[i][j].belong = 1
-                else:
-                    self.mp.mp[i][j].belong = 0
+                elif self.mp.mp[i][j].type == 'land' or self.mp.mp[i][j].type == 'general' or self.mp.mp[i][
+                    j].type == 'city' and len(self.colortousername) > 0:
+                    for k in c:
+                        if p.find(' ' + k + ' ') != -1:
+                            self.mp.mp[i][j].belong = self.colortousername[k]
+                            break
+                if self.mp.mp[i][j].belong == 0:
+                    self.mp.mp[i][j].belong = 'undefined'
                 p = stmp[0]
                 stmp.pop(0)
                 try:
@@ -246,30 +257,17 @@ class Bot(object):
         except:
             return
 
-    def UpdateScore(self, uname, cost):
-        if uname == self.controller:
-            return True
-        try:
-            if self.score[uname] < cost:
-                return False
-            else:
-                self.score[uname] -= cost
-                self.score[self.username] += cost
-                return True
-        except:
-            return False
-
-    def getscore(self, uname):
-        if uname in self.score:
-            return self.score[uname]
+    def getrating(self, uname):
+        if uname in self.Rating:
+            return self.Rating[uname]
         else:
             return 0
 
-    def addscore(self, uname, x):
-        if uname in self.score:
-            self.score[uname] += x
+    def addrating(self, uname, x):
+        if uname in self.Rating:
+            self.Rating[uname] += x
         else:
-            self.score[uname] = x
+            self.Rating[uname] = x
 
     def gettime(self, uname):
         if uname in self.wintime:
@@ -295,14 +293,14 @@ class Bot(object):
             self.wintime[uname] = wintime
         data.close()
 
-        self.score = {}
-        data = open('score', mode='r')
+        self.Rating = {}
+        data = open('rating', mode='r')
         s = data.readlines()
         n = int(s[0].strip())
         for i in range(n):
             uname = s[2 * i + 1].strip()
-            score = int(s[2 * (i + 1)].strip())
-            self.score[uname] = score
+            rating = int(s[2 * (i + 1)].strip())
+            self.Rating[uname] = rating
         data.close()
         return
 
@@ -316,150 +314,125 @@ class Bot(object):
         data.flush()
         data.close()
 
-        uname = list(self.score.keys())
-        data = open('score', mode='w')
+        uname = list(self.Rating.keys())
+        data = open('rating', mode='w')
         data.write(str(len(uname)) + '\n')
         for i in uname:
             data.write(i + '\n')
-            data.write(str(self.score[i]) + '\n')
+            data.write(str(self.Rating[i]) + '\n')
         data.flush()
         data.close()
         return
 
     def CommandLine(self):  # 命令行
-        self.GetMessage()
-        cur = self.msg[len(self.msg) - 1]
-        tmp = ['']
-        tot = 0
-        for i in range(0, len(cur[1])):
-            if cur[1][i] == ' ' and (i == 0 or cur[1][i - 1] != ' '):
-                tot += 1
-                tmp.append('')
-            elif cur[1][i] != ' ':
-                tmp[tot] += cur[1][i]
-        if tmp[0] == 'help':
-            if tot == 0:
-                msg = '<strong>命令列表：</strong><br>'
-                tmp = list(self.aToB.keys())
-                for x in tmp:
-                    msg += x + ', '
-                self.sendMessage(msg)
-                self.sendMessage('提示：输入help [command]以查询命令command的用法')
-            elif tot == 1:
-                try:
-                    x = self.aToB[tmp[1]]
-                    self.sendMessage('命令' + x + ': ' + self.commands[x][0] + '（花费' + str(
-                        self.commands[x][1]) + '点分数）')
-                except:
-                    self.sendMessage('未找到该命令')
-            else:
-                self.sendMessage('需要0或1个参数，发现' + str(tot) + '个')
-        if tmp[0] == 'query':
-            if tot != 0 and tot != 1:
-                self.sendMessage('需要0或1个参数，发现' + str(tot) + '个')
-            elif tot == 0:
-                self.sendMessage(str(self.getscore(cur[0])) + '分')
-            elif tot == 1:
-                self.sendMessage(str(self.getscore(tmp[1])) + '分')
-        if tmp[0] == 'send':
-            if self.UpdateScore(cur[0], self.commands['send [uname] [x]'][1]):
-                if tot != 2:
-                    self.sendMessage('需要2个参数，发现' + str(tot) + '个')
-                else:
+        while True:
+            sleep(0.1)
+            self.GetMessage()
+            cur = self.msg[len(self.msg) - 1]
+            tmp = ['']
+            tot = 0
+            for i in range(0, len(cur[1])):
+                if cur[1][i] == ' ' and (i == 0 or cur[1][i - 1] != ' '):
+                    tot += 1
+                    tmp.append('')
+                elif cur[1][i] != ' ':
+                    tmp[tot] += cur[1][i]
+            if tmp[0] in self.aToB and self.getrating(cur[0]) < 0:
+                self.sendMessage('您已被封禁')
+                continue
+            if tmp[0] == 'help':
+                if tot == 0:
+                    msg = '<strong>命令列表：</strong><br>'
+                    tmp = list(self.aToB.keys())
+                    for x in tmp:
+                        msg += x + ', '
+                    self.sendMessage(msg)
+                    self.sendMessage('提示：输入help [command]以查询命令command的用法')
+                elif tot == 1:
                     try:
-                        x = int(tmp[2])
-                        if x <= 0:
-                            raise ValueError('')
+                        x = self.aToB[tmp[1]]
+                        self.sendMessage('命令' + x + ': ' + self.commands[x])
                     except:
-                        self.sendMessage('参数不在范围内')
-                    else:
-                        if x > self.getscore(cur[0]):
-                            self.sendMessage('分数不足')
-                        else:
-                            self.score[cur[0]] -= x
-                            self.addscore(tmp[1], x)
-                            self.sendMessage('成功')
-            else:
-                self.sendMessage('分数不足')
-        if tmp[0] == 'draw':
-            if tot != 1:
-                self.sendMessage('需要1个参数，发现' + str(tot) + '个')
-            else:
-                try:
-                    cnt = int(tmp[1])
-                except:
-                    self.sendMessage('参数应为整数')
+                        self.sendMessage('未找到该命令')
                 else:
-                    if cnt <= 0:
-                        self.sendMessage('参数不在范围内')
-                    elif self.UpdateScore(cur[0], 10 * cnt):
-                        res = 0
-                        role = [[3, 0.2], [10, 0.1], [87, 0]]
-                        for i in range(cnt):
-                            curtry = random.randint(1, 100)
-                            rate = 0
-                            for j in role:
-                                rate += j[0]
-                                if curtry <= rate:
-                                    pos = int((self.score[self.username] - 10 * cnt) * j[1])
-                                    res += pos
-                                    self.score[self.username] -= pos
-                                    break
-                        self.addscore(cur[0], res)
-                        self.sendMessage('恭喜获得' + str(res) + '分')
-                    else:
-                        self.sendMessage('分数不足')
-        if tmp[0] == 'kill':
-            if cur[0] == self.controller:
-                self.driver.close()
-                del self
-            else:
-                self.sendMessage('权限不足')
-        if tmp[0] == 'enter':
-            if cur[0] == self.controller:
-                self.roomId = tmp[1]
-                self.EnterRoom()
-            else:
-                self.sendMessage('权限不足')
-        if tmp[0] == 'setsecret':
-            if cur[0] == self.controller:
-                self.isSecret = not self.isSecret
-                self.sendMessage('secret = ' + str(self.isSecret))
-            else:
-                self.sendMessage('权限不足')
-        if tmp[0] == 'savedata':
-            if cur[0] == self.controller:
-                self.saveData()
-                self.sendMessage('saved')
-            else:
-                self.sendMessage('权限不足')
-        if tmp[0] == 'readdata':
-            if cur[0] == self.controller:
-                try:
-                    self.readData()
-                    self.sendMessage('read')
-                except:
-                    self.sendMessage('error')
-            else:
-                self.sendMessage('权限不足')
-        if tmp[0] == 'setautosave':
-            if cur[0] == self.controller:
-                self.isAutoSave = not self.isAutoSave
-                self.sendMessage('autosave = ' + str(self.isAutoSave))
-            else:
-                self.sendMessage('权限不足')
-        if tmp[0] == 'setscore':
-            if cur[0] == self.controller:
-                self.score[tmp[1]] = int(tmp[2])
-                self.sendMessage('score = ' + tmp[2])
-            else:
-                self.sendMessage('权限不足')
-        if tmp[0] == 'settime':
-            if cur[0] == self.controller:
-                self.wintime[tmp[1]] = int(tmp[2])
-                self.sendMessage('wintime = ' + tmp[2])
-            else:
-                self.sendMessage('权限不足')
+                    self.sendMessage('需要0或1个参数，发现' + str(tot) + '个')
+            if tmp[0] == 'query':
+                if tot != 0 and tot != 1:
+                    self.sendMessage('需要0或1个参数，发现' + str(tot) + '个')
+                elif tot == 0:
+                    self.sendMessage(str(self.getrating(cur[0])))
+                elif tot == 1:
+                    self.sendMessage(str(self.getrating(tmp[1])))
+            if tmp[0] == 'info':
+                uname = list(self.Rating.keys())
+                winners = '<strong>Rating排行榜：</strong><br>'
+                winnerList = []
+                cmp = lambda s1: s1[1]
+                for i in uname:
+                    winnerList.append([i, self.Rating[i]])
+                winnerList.sort(key=cmp, reverse=True)
+                cnt = 0
+                for i in winnerList:
+                    winners += i[0] + ':' + str(i[1]) + '<br>'
+                    if len(winners) >= 70:
+                        self.sendMessage('<br>' + winners)
+                        winners = ''
+                    cnt += 1
+                    if cnt >= 10:
+                        break
+                if winners != '':
+                    self.sendMessage('<br>' + winners)
+            if tmp[0] == 'kill':
+                if cur[0] == self.controller:
+                    self.driver.close()
+                    del self
+                else:
+                    self.sendMessage('权限不足')
+            if tmp[0] == 'enter':
+                if cur[0] == self.controller:
+                    self.roomId = tmp[1]
+                    self.EnterRoom()
+                else:
+                    self.sendMessage('权限不足')
+            if tmp[0] == 'setsecret':
+                if cur[0] == self.controller:
+                    self.isSecret = not self.isSecret
+                    self.sendMessage('secret = ' + str(self.isSecret))
+                else:
+                    self.sendMessage('权限不足')
+            if tmp[0] == 'savedata':
+                if cur[0] == self.controller:
+                    self.saveData()
+                    self.sendMessage('saved')
+                else:
+                    self.sendMessage('权限不足')
+            if tmp[0] == 'readdata':
+                if cur[0] == self.controller:
+                    try:
+                        self.readData()
+                        self.sendMessage('read')
+                    except:
+                        self.sendMessage('error')
+                else:
+                    self.sendMessage('权限不足')
+            if tmp[0] == 'setautosave':
+                if cur[0] == self.controller:
+                    self.isAutoSave = not self.isAutoSave
+                    self.sendMessage('autosave = ' + str(self.isAutoSave))
+                else:
+                    self.sendMessage('权限不足')
+            if tmp[0] == 'setrating':
+                if cur[0] == self.controller:
+                    self.Rating[tmp[1]] = int(tmp[2])
+                    self.sendMessage('Rating = ' + tmp[2])
+                else:
+                    self.sendMessage('权限不足')
+            if tmp[0] == 'settime':
+                if cur[0] == self.controller:
+                    self.wintime[tmp[1]] = int(tmp[2])
+                    self.sendMessage('wintime = ' + tmp[2])
+                else:
+                    self.sendMessage('权限不足')
         return
 
     def Login(self):  # 登录
@@ -507,7 +480,7 @@ class Bot(object):
     def flushMovements(self):  # 更新移动
         tmp = self.mp.mp[self.homex][self.homey].tmp
         self.SendKeyToTable(self.movements[0])
-        if self.mp.mp[self.curx][self.cury].belong == 0:
+        if self.mp.mp[self.curx][self.cury].belong != 1:
             self.movements = []
             return
         if self.movements[0] == 'W':
@@ -541,6 +514,20 @@ class Bot(object):
         self.ispre = True  # 是否预处理
         self.useless = []
         self.preland = []
+
+        self.colortousername = {}
+        a = self.driver.find_element_by_id('info-content').get_attribute('innerHTML')
+        while True:  # 读取领地-兵力排行榜
+            p1 = a.find(':')
+            p2 = a.find(';')
+            if p1 == -1 or p2 == -1:
+                break
+            color = a[p1 + 2:p2]
+            a = a[p2 + 1:]
+            p1 = a.find('>')
+            p2 = a.find('<')
+            username = a[p1 + 1:p2]
+            self.colortousername[color] = username
         return 0
 
     def sendMessage(self, msg):  # 发送消息
@@ -554,7 +541,7 @@ class Bot(object):
         return
 
     def updateMap(self):  # 分析地图
-        tmp = self.mp.findMatch(lambda a: a.type == 'general' and a.belong == 0)
+        tmp = self.mp.findMatch(lambda a: a.type == 'general' and a.belong != 1)
         if tmp:
             for i in tmp:
                 if i not in self.homes:  # 找家
@@ -566,7 +553,7 @@ class Bot(object):
         if not self.preland:
             self.preland = self.mp.findMatch(lambda a: a.type == 'empty' or a.belong == 1)
         else:
-            enemy = self.mp.findMatch(lambda a: a.belong == 0)
+            enemy = self.mp.findMatch(lambda a: a.belong != 1)
             for i in enemy:
                 if i in self.preland and i not in self.useless:  # 之前是空地或己方土地，现在是敌方土地，无需探索
                     self.useless.append(i)
@@ -599,7 +586,7 @@ class Bot(object):
             self.moveTo(tmp[0], tmp[1])
             return
         tmp = self.mp.findMatchByRange(self.homex, self.homey, 1,
-                                       lambda a: a.belong == 0 and (a.type == 'land' or a.type == 'city'))
+                                       lambda a: a.belong != 1 and (a.type == 'land' or a.type == 'city'))
         if tmp and self.mp.mp[mx[0]][mx[1]].tmp > 30:  # 智能守家
             mx = self.mp.findMax(lambda a: a.type != 'general' and a.belong == 1)
             self.SelectLand(mx[0], mx[1])
@@ -614,7 +601,7 @@ class Bot(object):
         self.ondefend = False
         tmp = self.mp.findMatch(lambda a: a.type == 'unknown')
         random.shuffle(tmp)
-        role = lambda a: len(self.mp.findMatchByRange(a[0], a[1], 4, lambda b: b.type == 'land' and b.belong == 0 and (
+        role = lambda a: len(self.mp.findMatchByRange(a[0], a[1], 4, lambda b: b.type == 'land' and b.belong != 1 and (
                 a not in self.useless)))
         tmp.sort(key=role, reverse=True)
         for i in tmp:
@@ -641,6 +628,50 @@ class Bot(object):
             self.moveTo(target[0], target[1])
         return
 
+    def changeRating(self, username, rating, nowRating):
+        if rating > 0:
+            rating = round(rating * (abs(49.5 - 0.01 * nowRating) + 50.5 - 0.01 * nowRating) / 10)
+        else:
+            rating = rating * round(0.002 * nowRating + 1)
+        if self.getrating(username) >= 0 and self.getrating(username) + rating < 0:
+            self.Rating[username] = 0
+        else:
+            self.addrating(username, rating)
+        return
+
+    def gameRatingCalc(self, winner):
+        user = []
+        tmp = list(self.colortousername.keys())
+        for i in tmp:
+            user.append(self.colortousername[i])
+        firstAmount = 0
+        firstRating = -1
+        firstBounce = 0
+        if self.getrating(winner) < 0:
+            self.addrating(winner, 5)
+            return 
+        for j in user:
+            if self.getrating(j) < 0:
+                continue
+            if j == winner:
+                firstAmount += 1
+                firstRating = max(firstRating, self.getrating(j))
+        for k in user:
+            if k == winner or self.getrating(k) < 0:
+                continue
+            score = round((self.getrating(k) - firstRating) / 1000) + 3
+            if score <= 0:
+                score = 1
+            if score > 10:
+                score = 10
+            firstBounce += score
+            self.changeRating(k, -score, self.getrating(k));
+        for k in user:
+            if k != winner or self.getrating(k) < 0:
+                continue
+            self.changeRating(k, firstBounce / firstAmount, self.getrating(k))
+        return
+
     def Main(self):
         self.Login()
         self.EnterRoom()
@@ -649,19 +680,19 @@ class Bot(object):
         ban = 0
         lastupdatetime = 0
         freetime = 0
+        self.t_command.start()
         while True:
             if self.driver.current_url != self.url:
                 self.EnterRoom()
                 sleep(10)
                 continue
             self.SendKeyToTable('F')  # 防踢
-            self.CommandLine()
             curTime = datetime.datetime.now()
             if curTime.hour == 0 and curTime.minute == 0 and time.time() - lastupdatetime > 3600:
                 lastupdatetime = time.time()
                 uname = list(self.wintime.keys())
                 for i in uname:
-                    if self.getscore(i) >= 0:
+                    if self.getrating(i) >= 0:
                         self.wintime[i] = 0
             try:
                 if self.driver.find_element_by_id("game-status").get_attribute('innerHTML') != "游戏中":
@@ -685,18 +716,18 @@ class Bot(object):
                 if tmp != '':
                     ac = ActionChains(self.driver)
                     ac.send_keys(Keys.ENTER).perform()
-                    if self.getscore(tmp) < 0 and self.mp.size in [9, 10]:
+                    if self.getrating(tmp) < 0 and self.mp.size in [9, 10]:
                         ban = time.time()
                     elif tmp != self.username and self.mp.size in [9, 10]:
                         self.addtime(tmp, 1)
                         if self.wintime[tmp] > 30:
                             self.sendMessage('您已被封禁')
-                            self.score[tmp] = -3000
+                            self.Rating[tmp] = -3000
                             ban = time.time()
                         else:
                             self.sendMessage('您已单挑' + str(self.wintime[tmp]) + '次')
-                    addtmp = (self.userCount - 1) ** 2
-                    self.addscore(tmp, addtmp)
+                    if self.mp.size not in [9, 10]:
+                        self.gameRatingCalc(tmp)
                     if self.isAutoSave:
                         self.saveData()
             except:
