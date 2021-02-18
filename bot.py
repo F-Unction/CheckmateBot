@@ -11,14 +11,15 @@ from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.common.keys import Keys
 import datetime
 import threading
-
+import cv2
+import paddlehub as hub
 
 def dist(xx1, yy1, xx2, yy2):
     return abs(xx1 - xx2) + abs(yy1 - yy2)
 
 
 dir = [[-1, 0], [0, 1], [1, 0], [0, -1]]
-
+ocr = hub.Module(name="chinese_ocr_db_crnn_server")
 
 class Node:
     def __init__(self, tmp=0, belong=0, type='land'):
@@ -440,20 +441,49 @@ class Bot(object):
         self.driver.get(self.kanaLink)
         usernameBox = self.driver.find_element_by_name("username")
         passwordBox = self.driver.find_element_by_name("pwd")
+        capBox = self.driver.find_element_by_name("cap")
+
+        frame = self.driver.find_element_by_xpath('/html/body/div[2]/div/form/div[1]/object')
+        self.driver.switch_to.frame(frame)
+        a = self.driver.find_element_by_css_selector('[fill="none"]')
+        self.driver.execute_script("""
+                       var element = arguments[0];
+                         element.parentNode.removeChild(element);
+                         """, a)
+
+        cap = -1
+
+        self.driver.get_screenshot_as_file('a.png')
+        np_images = [cv2.imread('a.png')]
+        results = ocr.recognize_text(
+            images=np_images,
+            use_gpu=False,
+            output_dir='ocr_result',
+            visualization=False,
+            box_thresh=0.5,
+            text_thresh=0.5)
+        for result in results:
+            data = result['data']
+            for infomation in data:
+                if re.match(r'\w\w\w\w', infomation['text']) and len(infomation['text']) == 4:
+                    cap = infomation['text']
+                    break
+        if cap == -1:
+            self.Login()
+        print(cap)
+        self.driver.switch_to.default_content()
+
         ac = ActionChains(self.driver)
-        # 输入账号密码并登录
         ac.send_keys_to_element(usernameBox, self.username)
         ac.send_keys_to_element(passwordBox, self.password)
-        sleep(10)  # 等待用户手动输入验证码
+        ac.send_keys_to_element(capBox, cap)
         ac.click(self.driver.find_element_by_id("submitButton")).perform()
         try:
             WebDriverWait(self.driver, 8).until(EC.url_to_be(self.kanaLink))
             print("登录成功！")
         except TimeoutException:
-            print("网络连接出现问题或账密错误！\n程序将在5秒后退出")
-            sleep(5)
-            self.driver.close()
-            del self
+            self.Login()
+        return
 
     def moveTo(self, x, y):  # 移动
         path, cost = self.mp.findPath(self.curx, self.cury, x, y)
@@ -649,7 +679,7 @@ class Bot(object):
         firstBounce = 0
         if self.getrating(winner) < 0:
             self.addrating(winner, 5)
-            return 
+            return
         for j in user:
             if self.getrating(j) < 0:
                 continue
