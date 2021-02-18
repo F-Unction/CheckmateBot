@@ -11,15 +11,18 @@ from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.common.keys import Keys
 import datetime
 import threading
-import cv2
-import paddlehub as hub
+#import cv2
+# import paddlehub as hub
+import json
+
 
 def dist(xx1, yy1, xx2, yy2):
     return abs(xx1 - xx2) + abs(yy1 - yy2)
 
 
 dir = [[-1, 0], [0, 1], [1, 0], [0, -1]]
-ocr = hub.Module(name="chinese_ocr_db_crnn_server")
+#ocr = hub.Module(name="chinese_ocr_db_crnn_mobile")
+
 
 class Node:
     def __init__(self, tmp=0, belong=0, type='land'):
@@ -117,20 +120,23 @@ class Map:
 
 class Bot(object):
 
-    def __init__(self, username, password, roomId, isSecret, controller, isAutoReady=True):
+    def __init__(self):
         self.kanaLink = "https://kana.byha.top:444/"
         self.driver = webdriver.Chrome()  # 浏览器
         # self.driver = webdriver.Firefox()
-        self.username = username  # 用户名
-        self.password = password  # 密码
-        self.roomId = roomId  # 房间号
-        self.isSecret = isSecret  # 是否为私密房间
-        self.isAutoReady = isAutoReady  # 是否主动准备
+
+        config = json.load(open("config.json", 'r'))
+
+        self.username = config['username']  # 用户名
+        self.password = config['password']  # 密码
+        self.roomId = config['roomID']  # 房间号
+        self.isSecret = False
+        self.isAutoReady = True
         self.mp = Map()  # 地图
         self.isAutoSave = False
         self.selectedMap = '1'
         self.ondefend = False
-        self.controller = controller
+        self.controller = config['controller']
         self.wintime = {}
         self.Rating = {}
         self.userCount = 2
@@ -284,45 +290,13 @@ class Bot(object):
         return
 
     def readData(self):
-        self.wintime = {}
-        data = open('wintime', mode='r')
-        s = data.readlines()
-        n = int(s[0].strip())
-        for i in range(n):
-            uname = s[2 * i + 1].strip()
-            wintime = int(s[2 * (i + 1)].strip())
-            self.wintime[uname] = wintime
-        data.close()
-
-        self.Rating = {}
-        data = open('rating', mode='r')
-        s = data.readlines()
-        n = int(s[0].strip())
-        for i in range(n):
-            uname = s[2 * i + 1].strip()
-            rating = int(s[2 * (i + 1)].strip())
-            self.Rating[uname] = rating
-        data.close()
+        self.wintime = json.load(open("wintime.json", 'r'))
+        self.Rating = json.load(open("rating.json", 'r'))
         return
 
     def saveData(self):
-        uname = list(self.wintime.keys())
-        data = open('wintime', mode='w')
-        data.write(str(len(uname)) + '\n')
-        for i in uname:
-            data.write(i + '\n')
-            data.write(str(self.wintime[i]) + '\n')
-        data.flush()
-        data.close()
-
-        uname = list(self.Rating.keys())
-        data = open('rating', mode='w')
-        data.write(str(len(uname)) + '\n')
-        for i in uname:
-            data.write(i + '\n')
-            data.write(str(self.Rating[i]) + '\n')
-        data.flush()
-        data.close()
+        json.dump(self.wintime, open("wintime.json", "w"))
+        json.dump(self.Rating, open("rating.json", "w"))
         return
 
     def CommandLine(self):  # 命令行
@@ -437,53 +411,74 @@ class Bot(object):
         return
 
     def Login(self):  # 登录
+        '''
         print("正在登录…")
         self.driver.get(self.kanaLink)
         usernameBox = self.driver.find_element_by_name("username")
         passwordBox = self.driver.find_element_by_name("pwd")
         capBox = self.driver.find_element_by_name("cap")
 
-        frame = self.driver.find_element_by_xpath('/html/body/div[2]/div/form/div[1]/object')
-        self.driver.switch_to.frame(frame)
-        a = self.driver.find_element_by_css_selector('[fill="none"]')
-        self.driver.execute_script("""
-                       var element = arguments[0];
-                         element.parentNode.removeChild(element);
-                         """, a)
-
-        cap = -1
-
-        self.driver.get_screenshot_as_file('a.png')
-        np_images = [cv2.imread('a.png')]
-        results = ocr.recognize_text(
-            images=np_images,
-            use_gpu=False,
-            output_dir='ocr_result',
-            visualization=False,
-            box_thresh=0.5,
-            text_thresh=0.5)
-        for result in results:
-            data = result['data']
-            for infomation in data:
-                if re.match(r'\w\w\w\w', infomation['text']) and len(infomation['text']) == 4:
-                    cap = infomation['text']
-                    break
-        if cap == -1:
-            self.Login()
-        print(cap)
-        self.driver.switch_to.default_content()
-
         ac = ActionChains(self.driver)
         ac.send_keys_to_element(usernameBox, self.username)
+        ac.send_keys_to_element(passwordBox, self.password).perform()
+
+        while True:
+            frame = self.driver.find_element_by_xpath('/html/body/div[2]/div/form/div[1]/object')
+            self.driver.switch_to.frame(frame)
+            a = self.driver.find_element_by_css_selector('[fill="none"]')
+            self.driver.execute_script("""
+                           var element = arguments[0];
+                             element.parentNode.removeChild(element);
+                             """, a)
+
+            cap = -1
+
+            self.driver.get_screenshot_as_file('a.png')
+            np_images = [cv2.imread('a.png')]
+            results = ocr.recognize_text(
+                images=np_images,
+                use_gpu=False,
+                output_dir='ocr_result',
+                visualization=False,
+                box_thresh=0.5,
+                text_thresh=0.5)
+            for result in results:
+                data = result['data']
+                for infomation in data:
+                    if re.match(r'\w\w\w\w', infomation['text']) and len(infomation['text']) == 4:
+                        cap = infomation['text']
+                        break
+            self.driver.switch_to.default_content()
+            print(cap)
+            ac = ActionChains(self.driver)
+            ac.send_keys_to_element(capBox, cap).perform()
+            self.driver.find_element_by_id("submitButton").click()
+            try:
+                WebDriverWait(self.driver, 8).until(EC.url_to_be(self.kanaLink))
+                print("登录成功！")
+                break
+            except TimeoutException:
+                pass
+        return
+        '''
+        print("正在登录…")
+        self.driver.get(self.kanaLink)
+        usernameBox = self.driver.find_element_by_name("username")
+        passwordBox = self.driver.find_element_by_name("pwd")
+        ac = ActionChains(self.driver)
+        # 输入账号密码并登录
+        ac.send_keys_to_element(usernameBox, self.username)
         ac.send_keys_to_element(passwordBox, self.password)
-        ac.send_keys_to_element(capBox, cap)
+        sleep(10)  # 等待用户手动输入验证码
         ac.click(self.driver.find_element_by_id("submitButton")).perform()
         try:
             WebDriverWait(self.driver, 8).until(EC.url_to_be(self.kanaLink))
             print("登录成功！")
         except TimeoutException:
-            self.Login()
-        return
+            print("网络连接出现问题或账密错误！\n程序将在5秒后退出")
+            sleep(5)
+            self.driver.close()
+            del self
 
     def moveTo(self, x, y):  # 移动
         path, cost = self.mp.findPath(self.curx, self.cury, x, y)
@@ -788,5 +783,5 @@ class Bot(object):
         return
 
 
-a = Bot(input("输入用户名："), input("输入密码："), input("输入房间号："), input("是否私密？(Y/N)") == "Y", input('输入控制者：'))
+a = Bot()
 a.Main()

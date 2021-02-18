@@ -3,8 +3,19 @@ CheckmateBot
 
 框架：<https://github.com/Polythefake/KanaBot>
 
-**特别提示：验证码无需用户手动输入**
+**~~特别提示：验证码无需用户手动输入~~**
 
+考虑到PaddleHub安装困难，该功能暂时停用，正在寻找替代方案
+
+在使用前，请在目录下创建`config.json`，填写以下内容：
+```json
+{
+  "username": "xxx",
+  "password": "xxx",
+  "roomID": "xxx",
+  "controller": "xxx"
+}
+```
 
 ### 关于控制者
 
