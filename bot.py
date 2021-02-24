@@ -741,7 +741,10 @@ class Bot(object):
         self.table = self.driver.find_element_by_tag_name("tbody")
         flag = False
         ban = 0
-        self.readData()
+        try:
+            self.readData()
+        except:
+            pass
         freetime = 0
         tmp = self.driver.get_cookies()
         for i in tmp:
