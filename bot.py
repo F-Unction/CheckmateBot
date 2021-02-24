@@ -10,10 +10,14 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.common.keys import Keys
 import datetime
-import threading
-#import cv2
-# import paddlehub as hub
+from tencentcloud.common import credential
+from tencentcloud.common.profile.client_profile import ClientProfile
+from tencentcloud.common.profile.http_profile import HttpProfile
+from tencentcloud.common.exception.tencent_cloud_sdk_exception import TencentCloudSDKException
+from tencentcloud.ocr.v20181119 import ocr_client, models
+import base64
 import json
+import requests
 
 
 def dist(xx1, yy1, xx2, yy2):
@@ -21,7 +25,6 @@ def dist(xx1, yy1, xx2, yy2):
 
 
 dir = [[-1, 0], [0, 1], [1, 0], [0, -1]]
-#ocr = hub.Module(name="chinese_ocr_db_crnn_mobile")
 
 
 class Node:
@@ -122,8 +125,6 @@ class Bot(object):
 
     def __init__(self):
         self.kanaLink = "https://kana.byha.top:444/"
-        self.driver = webdriver.Chrome()  # 浏览器
-        # self.driver = webdriver.Firefox()
 
         config = json.load(open("config.json", 'r'))
 
@@ -137,13 +138,14 @@ class Bot(object):
         self.selectedMap = '1'
         self.ondefend = False
         self.controller = config['controller']
-        self.wintime = {}
-        self.Rating = {}
+        self.secretId = config['secretId']
+        self.secretKey = config['secretKey']
+        self.data = {}
         self.userCount = 2
         self.colortousername = {}
 
         self.commands = {'help (command)': '查看命令列表（或命令command的用法）',
-                         'query (i)': '查询自己（或玩家i）的Rating',
+                         'query (i)': '查询自己（或玩家i）的用户信息',
                          'info': '获取Rating排行榜前10名'}
         self.aToB = {'help': 'help (command)', 'info': 'info', 'query': 'query (i)'}
         self.tips = ['Bot会智能守家', '<del>杀死Bot的次数越多越容易触发特异性打击</del>', '<del>Bot已参战</del>', '<del>如果没有足够实力请不要与Bot单挑</del>',
@@ -151,8 +153,6 @@ class Bot(object):
         tmp = list(self.commands.keys())
         for x in tmp:
             self.tips.append('命令' + x + ': ' + self.commands[x])
-
-        self.t_command = threading.Thread(target=self.CommandLine, name="command")  # 命令行线程
 
     def SendKeyToTable(self, key):
         ac = ActionChains(self.driver)
@@ -264,221 +264,225 @@ class Bot(object):
         except:
             return
 
-    def getrating(self, uname):
-        if uname in self.Rating:
-            return self.Rating[uname]
+    def getByKey(self, uname, key):
+        if uname in self.data and key in self.data[uname]:
+            return self.data[uname][key]
         else:
             return 0
 
-    def addrating(self, uname, x):
-        if uname in self.Rating:
-            self.Rating[uname] += x
-        else:
-            self.Rating[uname] = x
-
-    def gettime(self, uname):
-        if uname in self.wintime:
-            return self.wintime[uname]
-        else:
-            return 0
-
-    def addtime(self, uname, x):
-        if uname in self.wintime:
-            self.wintime[uname] += x
-        else:
-            self.wintime[uname] = x
+    def addByKey(self, uname, x, key):
+        if uname in self.data and key in self.data[uname]:
+            self.data[uname][key] += x
+            return
+        elif uname not in self.data:
+            self.data[uname] = {}
+        self.data[uname][key] = x
         return
 
+    def setByKey(self, uname, x, key):
+        if uname not in self.data:
+            self.data[uname] = {}
+        self.data[uname][key] = x
+
     def readData(self):
-        self.wintime = json.load(open("wintime.json", 'r'))
-        self.Rating = json.load(open("rating.json", 'r'))
+        self.data = json.load(open("data.json", 'r'))
         return
 
     def saveData(self):
-        json.dump(self.wintime, open("wintime.json", "w"))
-        json.dump(self.Rating, open("rating.json", "w"))
+        json.dump(self.data, open("data.json", "w"))
         return
 
     def CommandLine(self):  # 命令行
-        while True:
-            sleep(0.1)
-            self.GetMessage()
-            cur = self.msg[len(self.msg) - 1]
-            tmp = ['']
-            tot = 0
-            for i in range(0, len(cur[1])):
-                if cur[1][i] == ' ' and (i == 0 or cur[1][i - 1] != ' '):
-                    tot += 1
-                    tmp.append('')
-                elif cur[1][i] != ' ':
-                    tmp[tot] += cur[1][i]
-            if tmp[0] in self.aToB and self.getrating(cur[0]) < 0:
-                self.sendMessage('您已被封禁')
-                continue
-            if tmp[0] == 'help':
-                if tot == 0:
-                    msg = '<strong>命令列表：</strong><br>'
-                    tmp = list(self.aToB.keys())
-                    for x in tmp:
-                        msg += x + ', '
-                    self.sendMessage(msg)
-                    self.sendMessage('提示：输入help [command]以查询命令command的用法')
-                elif tot == 1:
-                    try:
-                        x = self.aToB[tmp[1]]
-                        self.sendMessage('命令' + x + ': ' + self.commands[x])
-                    except:
-                        self.sendMessage('未找到该命令')
-                else:
-                    self.sendMessage('需要0或1个参数，发现' + str(tot) + '个')
-            if tmp[0] == 'query':
-                if tot != 0 and tot != 1:
-                    self.sendMessage('需要0或1个参数，发现' + str(tot) + '个')
-                elif tot == 0:
-                    self.sendMessage(str(self.getrating(cur[0])))
-                elif tot == 1:
-                    self.sendMessage(str(self.getrating(tmp[1])))
-            if tmp[0] == 'info':
-                uname = list(self.Rating.keys())
-                winners = '<strong>Rating排行榜：</strong><br>'
-                winnerList = []
-                cmp = lambda s1: s1[1]
-                for i in uname:
-                    winnerList.append([i, self.Rating[i]])
-                winnerList.sort(key=cmp, reverse=True)
-                cnt = 0
-                for i in winnerList:
-                    winners += i[0] + ':' + str(i[1]) + '<br>'
-                    if len(winners) >= 70:
-                        self.sendMessage('<br>' + winners)
-                        winners = ''
-                    cnt += 1
-                    if cnt >= 10:
-                        break
-                if winners != '':
+        self.GetMessage()
+        cur = self.msg[len(self.msg) - 1]
+        tmp = ['']
+        tot = 0
+        for i in range(0, len(cur[1])):
+            if cur[1][i] == ' ' and (i == 0 or cur[1][i - 1] != ' '):
+                tot += 1
+                tmp.append('')
+            elif cur[1][i] != ' ':
+                tmp[tot] += cur[1][i]
+        if tmp[0] in list(self.aToB.keys()) and self.getByKey(cur[0], 'ban') > 0:
+            self.sendMessage('您已被封禁，剩余' + str(self.getByKey(cur[0], 'ban')) + '天')
+            return
+        if tmp[0] == 'help':
+            if tot == 0:
+                msg = '<strong>命令列表：</strong><br>'
+                tmp = list(self.aToB.keys())
+                for x in tmp:
+                    msg += x + ', '
+                self.sendMessage(msg)
+                self.sendMessage('提示：输入help [command]以查询命令command的用法')
+            elif tot == 1:
+                try:
+                    x = self.aToB[tmp[1]]
+                    self.sendMessage('命令' + x + ': ' + self.commands[x])
+                except:
+                    self.sendMessage('未找到该命令')
+            else:
+                self.sendMessage('需要0或1个参数，发现' + str(tot) + '个')
+        if tmp[0] == 'query':
+            uname = ''
+            if tot != 0 and tot != 1:
+                self.sendMessage('需要0或1个参数，发现' + str(tot) + '个')
+            elif tot == 0:
+                uname = cur[0]
+            elif tot == 1:
+                uname = tmp[1]
+            if uname != '':
+                self.sendMessage('Rating: ' + str(self.getByKey(uname, 'Rating')) + '<br>'
+                                 + '单挑胜利次数: ' + str(self.getByKey(uname, 'wintime')) + '<br>' +
+                                 '剩余封禁天数: ' + str(self.getByKey(uname, 'ban')) + '<br>' +
+                                 '最近Rating更新时间: ' + str(
+                    int(time.time() - self.getByKey(uname, 'lastratingupdated'))) + '秒前<br>')
+        if tmp[0] == 'info':
+            uname = list(self.data.keys())
+            winners = '<strong>Rating排行榜：</strong><br>'
+            winnerList = []
+            cmp = lambda s1: s1[1]
+            for i in uname:
+                uid = self.GetUidByUsername(i)
+                if time.time() - self.getByKey(i, 'lastratingupdated') < 604800 and (
+                        self.GetUserInfoByUid(uid)['bili_uid'] != 0 or self.GetUserLevelByUid(uid) >= 6):
+                    winnerList.append([i, self.getByKey(i, 'Rating')])
+            winnerList.sort(key=cmp, reverse=True)
+            cnt = 0
+            for i in winnerList:
+                winners += '#' + str(cnt + 1) + ',' + i[0] + ':' + str(i[1]) + '<br>'
+                if len(winners) >= 70:
                     self.sendMessage('<br>' + winners)
-            if tmp[0] == 'kill':
-                if cur[0] == self.controller:
-                    self.driver.close()
-                    del self
-                else:
-                    self.sendMessage('权限不足')
-            if tmp[0] == 'enter':
-                if cur[0] == self.controller:
-                    self.roomId = tmp[1]
-                    self.EnterRoom()
-                else:
-                    self.sendMessage('权限不足')
-            if tmp[0] == 'setsecret':
-                if cur[0] == self.controller:
-                    self.isSecret = not self.isSecret
-                    self.sendMessage('secret = ' + str(self.isSecret))
-                else:
-                    self.sendMessage('权限不足')
-            if tmp[0] == 'savedata':
-                if cur[0] == self.controller:
-                    self.saveData()
-                    self.sendMessage('saved')
-                else:
-                    self.sendMessage('权限不足')
-            if tmp[0] == 'readdata':
-                if cur[0] == self.controller:
-                    try:
-                        self.readData()
-                        self.sendMessage('read')
-                    except:
-                        self.sendMessage('error')
-                else:
-                    self.sendMessage('权限不足')
-            if tmp[0] == 'setautosave':
-                if cur[0] == self.controller:
-                    self.isAutoSave = not self.isAutoSave
-                    self.sendMessage('autosave = ' + str(self.isAutoSave))
-                else:
-                    self.sendMessage('权限不足')
-            if tmp[0] == 'setrating':
-                if cur[0] == self.controller:
-                    self.Rating[tmp[1]] = int(tmp[2])
-                    self.sendMessage('Rating = ' + tmp[2])
-                else:
-                    self.sendMessage('权限不足')
-            if tmp[0] == 'settime':
-                if cur[0] == self.controller:
-                    self.wintime[tmp[1]] = int(tmp[2])
-                    self.sendMessage('wintime = ' + tmp[2])
-                else:
-                    self.sendMessage('权限不足')
+                    winners = ''
+                cnt += 1
+                if cnt >= 10:
+                    break
+            if winners != '':
+                self.sendMessage('<br>' + winners)
+        if tmp[0] == 'kill':
+            if cur[0] == self.controller:
+                self.driver.close()
+                del self
+            else:
+                self.sendMessage('权限不足')
+        if tmp[0] == 'enter':
+            if cur[0] == self.controller:
+                self.roomId = tmp[1]
+                self.EnterRoom()
+            else:
+                self.sendMessage('权限不足')
+        if tmp[0] == 'setsecret':
+            if cur[0] == self.controller:
+                self.isSecret = not self.isSecret
+                self.sendMessage('secret = ' + str(self.isSecret))
+            else:
+                self.sendMessage('权限不足')
+        if tmp[0] == 'savedata':
+            if cur[0] == self.controller:
+                self.saveData()
+                self.sendMessage('saved')
+            else:
+                self.sendMessage('权限不足')
+        if tmp[0] == 'readdata':
+            if cur[0] == self.controller:
+                try:
+                    self.readData()
+                    self.sendMessage('read')
+                except:
+                    self.sendMessage('error')
+            else:
+                self.sendMessage('权限不足')
+        if tmp[0] == 'setdata':
+            if cur[0] == self.controller:
+                self.setByKey(tmp[1], int(tmp[3]), tmp[2])
+                self.sendMessage(tmp[2] + ' = ' + tmp[3])
+            else:
+                self.sendMessage('权限不足')
+        return
+
+    def Logout(self):  # 登出
+        print('正在登出…')
+        self.driver.get('https://kana.byha.top:444/logout')
+        self.driver.switch_to.default_content()
+        sleep(5)
+        self.driver.find_element_by_id('submitButton').click()
+        return
+
+    def delNode(self, a):
+        self.driver.execute_script("""
+                                   var element = arguments[0];
+                                     element.parentNode.removeChild(element);
+                                     """, a)
         return
 
     def Login(self):  # 登录
-        '''
         print("正在登录…")
         self.driver.get(self.kanaLink)
         usernameBox = self.driver.find_element_by_name("username")
         passwordBox = self.driver.find_element_by_name("pwd")
-        capBox = self.driver.find_element_by_name("cap")
 
         ac = ActionChains(self.driver)
         ac.send_keys_to_element(usernameBox, self.username)
         ac.send_keys_to_element(passwordBox, self.password).perform()
-
+        # self.delNode(self.driver.find_element_by_css_selector('[rel="stylesheet"]'))
         while True:
+            if self.driver.current_url == self.kanaLink:
+                break
+            self.driver.execute_script('document.getElementById("cap").childNodes[1].style.width="150%"')
             frame = self.driver.find_element_by_xpath('/html/body/div[2]/div/form/div[1]/object')
             self.driver.switch_to.frame(frame)
-            a = self.driver.find_element_by_css_selector('[fill="none"]')
-            self.driver.execute_script("""
-                           var element = arguments[0];
-                             element.parentNode.removeChild(element);
-                             """, a)
+            try:
+                a = self.driver.find_element_by_css_selector('[fill="none"]')
+                self.delNode(a)
+            except:
+                sleep(1)
+                continue
+
+            self.driver.switch_to.default_content()
 
             cap = -1
-
             self.driver.get_screenshot_as_file('a.png')
-            np_images = [cv2.imread('a.png')]
-            results = ocr.recognize_text(
-                images=np_images,
-                use_gpu=False,
-                output_dir='ocr_result',
-                visualization=False,
-                box_thresh=0.5,
-                text_thresh=0.5)
-            for result in results:
-                data = result['data']
-                for infomation in data:
-                    if re.match(r'\w\w\w\w', infomation['text']) and len(infomation['text']) == 4:
-                        cap = infomation['text']
-                        break
-            self.driver.switch_to.default_content()
+
+            try:
+                cred = credential.Credential(self.secretId, self.secretKey)
+                httpProfile = HttpProfile()
+                httpProfile.endpoint = "ocr.tencentcloudapi.com"
+
+                clientProfile = ClientProfile()
+                clientProfile.httpProfile = httpProfile
+                client = ocr_client.OcrClient(cred, "ap-shanghai", clientProfile)
+
+                req = models.GeneralBasicOCRRequest()
+                params = {
+                    "ImageBase64": base64.b64encode(open('a.png', 'rb').read()).decode()
+                }
+                req.from_json_string(json.dumps(params))
+
+                resp = client.GeneralBasicOCR(req)
+                a = json.loads(resp.to_json_string())
+
+            except TencentCloudSDKException as err:
+                print(err)
+            for i in a['TextDetections']:
+                tmp = i['DetectedText']
+                s = ''
+                for j in tmp:
+                    if j != '(' and j != ')':  # 去除诡异括号
+                        s += j
+                tmp = s
+                if re.match(r'\w\w\w\w', tmp) and len(tmp) == 4:
+                    cap = tmp
+                    break
             print(cap)
             ac = ActionChains(self.driver)
-            ac.send_keys_to_element(capBox, cap).perform()
+            ac.send_keys_to_element(self.driver.find_element_by_name("cap"), cap).perform()
             self.driver.find_element_by_id("submitButton").click()
             try:
-                WebDriverWait(self.driver, 8).until(EC.url_to_be(self.kanaLink))
-                print("登录成功！")
+                WebDriverWait(self.driver, 10).until(EC.url_to_be(self.kanaLink))
                 break
             except TimeoutException:
                 pass
+        print("登录成功！")
         return
-        '''
-        print("正在登录…")
-        self.driver.get(self.kanaLink)
-        usernameBox = self.driver.find_element_by_name("username")
-        passwordBox = self.driver.find_element_by_name("pwd")
-        ac = ActionChains(self.driver)
-        # 输入账号密码并登录
-        ac.send_keys_to_element(usernameBox, self.username)
-        ac.send_keys_to_element(passwordBox, self.password)
-        sleep(10)  # 等待用户手动输入验证码
-        ac.click(self.driver.find_element_by_id("submitButton")).perform()
-        try:
-            WebDriverWait(self.driver, 8).until(EC.url_to_be(self.kanaLink))
-            print("登录成功！")
-        except TimeoutException:
-            print("网络连接出现问题或账密错误！\n程序将在5秒后退出")
-            sleep(5)
-            self.driver.close()
-            del self
 
     def moveTo(self, x, y):  # 移动
         path, cost = self.mp.findPath(self.curx, self.cury, x, y)
@@ -658,10 +662,11 @@ class Bot(object):
             rating = round(rating * (abs(49.5 - 0.01 * nowRating) + 50.5 - 0.01 * nowRating) / 10)
         else:
             rating = rating * round(0.002 * nowRating + 1)
-        if self.getrating(username) >= 0 and self.getrating(username) + rating < 0:
-            self.Rating[username] = 0
+        if nowRating >= 0 and nowRating + rating < 0:
+            self.setByKey(username, 0, 'Rating')
         else:
-            self.addrating(username, rating)
+            self.addByKey(username, rating, 'Rating')
+        self.setByKey(username, time.time(), 'lastratingupdated')
         return
 
     def gameRatingCalc(self, winner):
@@ -672,53 +677,92 @@ class Bot(object):
         firstAmount = 0
         firstRating = -1
         firstBounce = 0
-        if self.getrating(winner) < 0:
-            self.addrating(winner, 5)
-            return
         for j in user:
-            if self.getrating(j) < 0:
-                continue
             if j == winner:
                 firstAmount += 1
-                firstRating = max(firstRating, self.getrating(j))
+                firstRating = max(firstRating, self.getByKey(j, 'Rating'))
         for k in user:
-            if k == winner or self.getrating(k) < 0:
+            if k == winner:
                 continue
-            score = round((self.getrating(k) - firstRating) / 1000) + 3
+            score = round((self.getByKey(k, 'Rating') - firstRating) / 1000) + 3
             if score <= 0:
                 score = 1
             if score > 10:
                 score = 10
             firstBounce += score
-            self.changeRating(k, -score, self.getrating(k));
-        for k in user:
-            if k != winner or self.getrating(k) < 0:
-                continue
-            self.changeRating(k, firstBounce / firstAmount, self.getrating(k))
+            self.changeRating(k, -score, self.getByKey(k, 'Rating'));
+        self.changeRating(winner, firstBounce / firstAmount, self.getByKey(winner, 'Rating'))
         return
 
+    def updateData(self):  # 每日一次
+        uname = list(self.data.keys())
+        for i in uname:
+            if self.getByKey(i, 'wintime') > 0:
+                self.setByKey(i, 0, 'wintime')
+            if self.getByKey(i, 'ban') > 0:
+                self.addByKey(i, -1, 'ban')
+        return
+
+    def APIGET(self, baseurl, params):
+        headers = {'Cookie': self.cookie}
+        res = requests.get(baseurl, params=params, headers=headers)
+        res.encoding = 'utf-8'
+        return res.text
+
+    def APIPOST(self, baseurl, data):
+        headers = {'Cookie': self.cookie}
+        res = requests.post(baseurl, data=data, headers=headers)
+        res.encoding = 'utf-8'
+        return res.text
+
+    def GetUserInfoByUid(self, uid):
+        res = json.loads(self.APIGET('https://kana.byha.top:444/api/user/info?', {'uid': str(uid)}))
+        return res['msg']
+
+    def GetUserLevelByUid(self, uid):
+        res = json.loads(self.APIPOST('https://kana.byha.top:444/api/user/level', {'uid': str(uid)}))
+        return res['msg']
+
+    def GetUidByUsername(self, username):
+        res = self.getByKey(username, 'uid')
+        if res != 0:
+            return res
+        res = json.loads(self.APIGET('https://kana.byha.top:444/api/user/name2id?', {'uname': username}))
+        if res['msg'] == 'No Such User':
+            return 0
+        self.setByKey(username, res['msg'], 'uid')
+        return res['msg']
+
     def Main(self):
+        self.driver = webdriver.Chrome()  # 浏览器
+        # self.driver = webdriver.Firefox()
         self.Login()
         self.EnterRoom()
         self.table = self.driver.find_element_by_tag_name("tbody")
         flag = False
         ban = 0
-        lastupdatetime = 0
+        self.readData()
         freetime = 0
-        self.t_command.start()
+        tmp = self.driver.get_cookies()
+        for i in tmp:
+            if i['name'] == 'client_session':
+                self.cookie = 'client_session=' + i['value']
+                break
+        print(self.cookie)
         while True:
+            curTime = datetime.datetime.now()
+            if curTime.hour not in range(8, 23):
+                self.updateData()
+                self.saveData()
+                self.Logout()
+                self.driver.close()
+                return
             if self.driver.current_url != self.url:
                 self.EnterRoom()
                 sleep(10)
                 continue
+            self.CommandLine()
             self.SendKeyToTable('F')  # 防踢
-            curTime = datetime.datetime.now()
-            if curTime.hour == 0 and curTime.minute == 0 and time.time() - lastupdatetime > 3600:
-                lastupdatetime = time.time()
-                uname = list(self.wintime.keys())
-                for i in uname:
-                    if self.getrating(i) >= 0:
-                        self.wintime[i] = 0
             try:
                 if self.driver.find_element_by_id("game-status").get_attribute('innerHTML') != "游戏中":
                     if flag:
@@ -741,20 +785,20 @@ class Bot(object):
                 if tmp != '':
                     ac = ActionChains(self.driver)
                     ac.send_keys(Keys.ENTER).perform()
-                    if self.getrating(tmp) < 0 and self.mp.size in [9, 10]:
+                    if self.getByKey(tmp, 'ban') > 0 and self.mp.size in [9, 10]:
                         ban = time.time()
+                        self.sendMessage('您已被封禁，剩余' + str(self.getByKey(tmp, 'ban')) + '天')
                     elif tmp != self.username and self.mp.size in [9, 10]:
-                        self.addtime(tmp, 1)
-                        if self.wintime[tmp] > 30:
-                            self.sendMessage('您已被封禁')
-                            self.Rating[tmp] = -3000
+                        self.addByKey(tmp, 1, 'wintime')
+                        if self.getByKey(tmp, 'wintime') > 30:
+                            self.setByKey(tmp, 7, 'ban')
+                            self.sendMessage('您已被封禁，剩余' + str(self.getByKey(tmp, 'ban')) + '天')
                             ban = time.time()
                         else:
-                            self.sendMessage('您已单挑' + str(self.wintime[tmp]) + '次')
+                            self.sendMessage('您已单挑' + str(self.getByKey(tmp, 'wintime')) + '次')
                     if self.mp.size not in [9, 10]:
                         self.gameRatingCalc(tmp)
-                    if self.isAutoSave:
-                        self.saveData()
+                    self.saveData()
             except:
                 pass
             try:
@@ -784,4 +828,8 @@ class Bot(object):
 
 
 a = Bot()
-a.Main()
+while True:
+    curTime = datetime.datetime.now()
+    if curTime.hour in range(8, 23):
+        a.Main()
+    sleep(60)

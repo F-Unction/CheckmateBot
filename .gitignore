@@ -2,6 +2,6 @@ geckodriver.log
 /.idea
 test.py
 bot2.py
-secret
+data.json
 .idea
 config.json
