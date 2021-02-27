@@ -34,3 +34,10 @@ class DataBase(object):
 
     def getUserNameList(self):
         return list(self.data.keys())
+
+    def deleteByKey(self, uname, key = ''):
+        if key == '':
+            del self.data[uname]
+        else:
+            del self.data[uname][key]
+        return

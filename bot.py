@@ -47,8 +47,8 @@ class Bot(object):
 
         self.commands = {'help (command)': '查看命令列表（或命令command的用法）',
                          'query (i)': '查询自己（或玩家i）的用户信息',
-                         'info': '获取Rating排行榜前10名'}
-        self.aToB = {'help': 'help (command)', 'info': 'info', 'query': 'query (i)'}
+                         'info': '获取Rating排行榜前10名', 'predict (i)': '预测自己（或房内玩家i）下局Rating变化'}
+        self.aToB = {'help': 'help (command)', 'info': 'info', 'query': 'query (i)', 'predict': 'predict (i)'}
         self.tips = ['Bot会智能守家', '<del>杀死Bot的次数越多越容易触发特异性打击</del>', '<del>Bot已参战</del>', '<del>如果没有足够实力请不要与Bot单挑</del>',
                      '<del>输入INFO可以获取实力排行榜</del>']
         tmp = list(self.commands.keys())
@@ -235,6 +235,67 @@ class Bot(object):
                         break
                 if winners != '':
                     self.sendMessage('<br>' + winners)
+            if tmp[0] == 'predict':
+                if tot == 0:
+                    curuser = cur[0]
+                elif tot == 1:
+                    curuser = tmp[1]
+                else:
+                    self.sendMessage('需要0或1个参数，发现' + str(tot) + '个')
+                    continue
+                user = self.getUserInRoom()
+                if curuser not in user:
+                    self.sendMessage('玩家不在房间中')
+                    continue
+                winner = curuser
+                firstAmount = 0
+                firstRating = -1
+                firstBounce = 0
+                for j in user:
+                    if j == winner:
+                        firstAmount += 1
+                        firstRating = max(firstRating, self.data.getByKey(j, 'Rating'))
+                for k in user:
+                    if k == winner:
+                        continue
+                    score = round((self.data.getByKey(k, 'Rating') - firstRating) / 1000) + 3
+                    if score <= 0:
+                        score = 1
+                    if score > 10:
+                        score = 10
+                    firstBounce += score
+                WinRating = self.changeRating(winner, firstBounce / firstAmount, self.data.getByKey(winner, 'Rating'),
+                                              True)
+                MaxLoseRating = -99999
+                MinLoseRating = 99999
+                AvgLoseRating = 0
+                for winner in user:
+                    if winner == curuser:
+                        continue
+                    firstAmount = 0
+                    firstRating = -1
+                    firstBounce = 0
+                    for j in user:
+                        if j == winner:
+                            firstAmount += 1
+                            firstRating = max(firstRating, self.data.getByKey(j, 'Rating'))
+                    k = curuser
+                    score = round((self.data.getByKey(k, 'Rating') - firstRating) / 1000) + 3
+                    if score <= 0:
+                        score = 1
+                    if score > 10:
+                        score = 10
+                    firstBounce += score
+                    currating = self.changeRating(k, -score, self.data.getByKey(k, 'Rating'), True)
+                    MaxLoseRating = max(currating, MaxLoseRating)
+                    MinLoseRating = min(MinLoseRating, currating)
+                    AvgLoseRating += currating
+                AvgLoseRating //= len(user) - 1
+                y = -AvgLoseRating / WinRating
+                self.sendMessage('<br>Win:' + str(WinRating) + '<br>Lose:' + str(MinLoseRating) + '~' + str(
+                    MaxLoseRating) + ', Avg.' + str(AvgLoseRating) + '<br>推荐胜率：' + str(
+                    round(100 / (y + 1) * y, 1)) + '%')
+
             if tmp[0] == 'kill':
                 if cur[0] == self.controller:
                     self.driver.close()
@@ -534,11 +595,13 @@ class Bot(object):
             self.moveTo(target[0], target[1])
         return
 
-    def changeRating(self, username, rating, nowRating):
+    def changeRating(self, username, rating, nowRating, predict=False):
         if rating > 0:
             rating = round(rating * (abs(49.5 - 0.01 * nowRating) + 50.5 - 0.01 * nowRating) / 10)
         else:
             rating = rating * round(0.002 * nowRating + 1)
+        if predict:
+            return rating
         if nowRating >= 0 and nowRating + rating < 0:
             self.data.setByKey(username, 0, 'Rating')
         else:
@@ -576,8 +639,10 @@ class Bot(object):
         for i in uname:
             if self.data.getByKey(i, 'wintime') > 0:
                 self.data.setByKey(i, 0, 'wintime')
-            if self.data.getByKey(i, 'ban') > 0:
+            if ban > 0:
                 self.data.addByKey(i, -1, 'ban')
+            if wintime == 0 and ban == 0 and rating == 0:  # 删除三无用户
+                self.data.deleteByKey(i)
         return
 
     def APIGET(self, baseurl, params):
@@ -609,6 +674,28 @@ class Bot(object):
             return 0
         self.data.setByKey(username, res['msg'], 'uid')
         return res['msg']
+
+    def getUserInRoom(self):
+        a = str(self.APIGET('https://kana.byha.top:444/checkmate/room', {}))
+        ans = ''
+        uname = []
+        while True:
+            g = re.search(r'<th>[\s\S]*?</th>', a)
+            if g:
+                tmp = g.group()
+                if tmp.find(self.username) != -1 and tmp.find(r'/checkmate/room/') == -1:
+                    ans = tmp[4:len(tmp) - 5]
+                    break
+                a = a[a.find(tmp) + 1:]
+            else:
+                break
+        while True:
+            pos = ans.find(';')
+            if pos == -1 or len(uname) == 8:
+                break
+            uname.append(ans[:pos])
+            ans = ans[pos + 1:]
+        return uname
 
     def Main(self):
         self.driver = webdriver.Chrome()  # 浏览器

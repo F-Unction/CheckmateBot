@@ -34,11 +34,11 @@ CheckmateBot
 |```help (command)```  |查看命令列表（或命令command的用法）  |/|否|
 |```query (i)```  |查询自己（或玩家i）的Rating  |/|否|
 |```info```  |获取Rating排行榜  |/| 否|
+|```predict (i)```  |预测自己（或房内玩家i）下局Rating变化  |/| 否|
 |```kill```  |关闭Bot  |/|**是**|
 |```enter [roomid]```  |进入roomid房间  |/|**是**|
 |```setsecret```  |切换房间私密状态  |/|**是**|
 |```savedata```  |保存游戏数据  |/|**是**|
 |```readdata```  |读取游戏数据  |/|**是**|
 |```setautosave```  |切换自动保存  |每局游戏结束后保存一次（默认值`False`）|**是**|
-|```setrating [uname] [x]```  |设置用户名为uname的玩家Rating为x  |/|**是**|
-|```settime [uname] [x]```  |设置用户名为uname的玩家单挑获胜次数为x  |/|**是**|
+|```setdata [uname] [key] [x]```  |设置用户名为uname的玩家的key为x  |key可以是`Rating`、`ban`等，详见数据库|**是**|
