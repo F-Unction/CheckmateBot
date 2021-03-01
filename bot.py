@@ -22,6 +22,19 @@ from map import *
 from database import *
 
 
+def reFindMatch(r, t):
+    ans = []
+    while True:
+        tmp = re.search(r, t)
+        if tmp:
+            g = tmp.group()
+            ans.append(g)
+            t = t[t.find(g) + 1:]
+        else:
+            break
+    return ans
+
+
 class Bot(object):
 
     def __init__(self):
@@ -35,7 +48,8 @@ class Bot(object):
         self.isSecret = False
         self.isAutoReady = True
         self.mp = Map()  # 地图
-        self.data = DataBase()  # 数据库
+        self.data = DataBase('data.json')  # 数据库
+        self.battleData = DataBase('battle.json')
         self.isAutoSave = False
         self.selectedMap = '1'
         self.ondefend = False
@@ -47,8 +61,10 @@ class Bot(object):
 
         self.commands = {'help (command)': '查看命令列表（或命令command的用法）',
                          'query (i)': '查询自己（或玩家i）的用户信息',
-                         'info': '获取Rating排行榜前10名', 'predict (i)': '预测自己（或房内玩家i）下局Rating变化'}
-        self.aToB = {'help': 'help (command)', 'info': 'info', 'query': 'query (i)', 'predict': 'predict (i)'}
+                         'info': '获取Rating排行榜前10名', 'predict (i)': '预测自己（或房内玩家i）下局Rating变化',
+                         'stats (i)': '获取自己（或玩家i）的统计数据'}
+        self.aToB = {'help': 'help (command)', 'info': 'info', 'query': 'query (i)', 'predict': 'predict (i)',
+                     'stats': 'stats (i)'}
         self.tips = ['Bot会智能守家', '<del>杀死Bot的次数越多越容易触发特异性打击</del>', '<del>Bot已参战</del>', '<del>如果没有足够实力请不要与Bot单挑</del>',
                      '<del>输入INFO可以获取实力排行榜</del>']
         tmp = list(self.commands.keys())
@@ -214,7 +230,7 @@ class Bot(object):
                                      '最近Rating更新时间: ' + str(
                         int(time.time() - self.data.getByKey(uname, 'lastratingupdated'))) + '秒前<br>')
             if tmp[0] == 'info':
-                uname = self.data.getUserNameList()
+                uname = self.data.getItemList()
                 winners = '<strong>Rating排行榜：</strong><br>'
                 winnerList = []
                 cmp = lambda s1: s1[1]
@@ -243,19 +259,18 @@ class Bot(object):
                 else:
                     self.sendMessage('需要0或1个参数，发现' + str(tot) + '个')
                     continue
-                user = self.getUserInRoom()
-                if curuser not in user:
+                if curuser not in self.userinroom:
                     self.sendMessage('玩家不在房间中')
                     continue
                 winner = curuser
                 firstAmount = 0
                 firstRating = -1
                 firstBounce = 0
-                for j in user:
+                for j in self.userinroom:
                     if j == winner:
                         firstAmount += 1
                         firstRating = max(firstRating, self.data.getByKey(j, 'Rating'))
-                for k in user:
+                for k in self.userinroom:
                     if k == winner:
                         continue
                     score = round((self.data.getByKey(k, 'Rating') - firstRating) / 1000) + 3
@@ -269,13 +284,13 @@ class Bot(object):
                 MaxLoseRating = -99999
                 MinLoseRating = 99999
                 AvgLoseRating = 0
-                for winner in user:
+                for winner in self.userinroom:
                     if winner == curuser:
                         continue
                     firstAmount = 0
                     firstRating = -1
                     firstBounce = 0
-                    for j in user:
+                    for j in self.userinroom:
                         if j == winner:
                             firstAmount += 1
                             firstRating = max(firstRating, self.data.getByKey(j, 'Rating'))
@@ -290,11 +305,36 @@ class Bot(object):
                     MaxLoseRating = max(currating, MaxLoseRating)
                     MinLoseRating = min(MinLoseRating, currating)
                     AvgLoseRating += currating
-                AvgLoseRating //= len(user) - 1
+                AvgLoseRating //= len(self.userinroom) - 1
                 y = -AvgLoseRating / WinRating
                 self.sendMessage('<br>Win:' + str(WinRating) + '<br>Lose:' + str(MinLoseRating) + '~' + str(
                     MaxLoseRating) + ', Avg.' + str(AvgLoseRating) + '<br>推荐胜率：' + str(
                     round(100 / (y + 1) * y, 1)) + '%')
+            if tmp[0] == 'stats':
+                if tot == 0:
+                    curuser = cur[0]
+                elif tot == 1:
+                    curuser = tmp[1]
+                else:
+                    self.sendMessage('需要0或1个参数，发现' + str(tot) + '个')
+                    continue
+                battle = self.data.getByKey(curuser, 'battle')
+                if battle == 0:
+                    self.sendMessage('No data')
+                    continue
+                stats = [[0, 0] for _ in range(10)]
+                for i in battle:
+                    stats[self.battleData.getByKey(i, 'playercount')][0] += 1
+                    if self.battleData.getByKey(i, 'winner') == curuser:
+                        stats[self.battleData.getByKey(i, 'playercount')][1] += 1
+                ans = '<br>'
+                for i in range(2, 9):
+                    ans += str(i) + '人局：' + str(stats[i][0]) + '场， 胜率'
+                    if stats[i][0] == 0:
+                        ans += '0.0%<br>'
+                    else:
+                        ans += str(round(stats[i][1] / stats[i][0] * 100, 1)) + '%<br>'
+                self.sendMessage(ans)
 
             if tmp[0] == 'kill':
                 if cur[0] == self.controller:
@@ -317,6 +357,7 @@ class Bot(object):
             if tmp[0] == 'savedata':
                 if cur[0] == self.controller:
                     self.data.saveData()
+                    self.battleData.saveData()
                     self.sendMessage('saved')
                 else:
                     self.sendMessage('权限不足')
@@ -324,6 +365,7 @@ class Bot(object):
                 if cur[0] == self.controller:
                     try:
                         self.data.readData()
+                        self.battleData.readData()
                         self.sendMessage('read')
                     except:
                         self.sendMessage('error')
@@ -333,6 +375,12 @@ class Bot(object):
                 if cur[0] == self.controller:
                     self.data.setByKey(tmp[1], int(tmp[3]), tmp[2])
                     self.sendMessage(tmp[2] + ' = ' + tmp[3])
+                else:
+                    self.sendMessage('权限不足')
+            if tmp[0] == 'exec':
+                if cur[0] == self.controller:
+                    exec(cur[1])
+                    self.sendMessage('完成')
                 else:
                     self.sendMessage('权限不足')
         return
@@ -501,10 +549,13 @@ class Bot(object):
         if len(msg) >= 92:
             self.sendMessage(msg[0:90])
             self.sendMessage(msg[90:len(msg)])
-        messageBox = self.driver.find_element_by_id("msg-sender")
-        ac = ActionChains(self.driver)
-        ac.send_keys_to_element(messageBox, msg)
-        ac.send_keys(Keys.ENTER).perform()
+        try:
+            messageBox = self.driver.find_element_by_id("msg-sender")
+            ac = ActionChains(self.driver)
+            ac.send_keys_to_element(messageBox, msg)
+            ac.send_keys(Keys.ENTER).perform()
+        except:
+            pass
         return
 
     def updateMap(self):  # 分析地图
@@ -635,14 +686,15 @@ class Bot(object):
         return
 
     def updateData(self):  # 每日一次
-        uname = self.data.getUserNameList()
+        uname = self.data.getItemList()
         for i in uname:
-            if self.data.getByKey(i, 'wintime') > 0:
+            wintime = self.data.getByKey(i, 'wintime')
+            ban = self.data.getByKey(i, 'ban')
+            rating = self.data.getByKey(i, 'Rating')
+            if wintime > 0:
                 self.data.setByKey(i, 0, 'wintime')
             if ban > 0:
                 self.data.addByKey(i, -1, 'ban')
-            if wintime == 0 and ban == 0 and rating == 0:  # 删除三无用户
-                self.data.deleteByKey(i)
         return
 
     def APIGET(self, baseurl, params):
@@ -675,6 +727,9 @@ class Bot(object):
         self.data.setByKey(username, res['msg'], 'uid')
         return res['msg']
 
+    def GetBattle(self, page):
+        return self.APIGET('https://kana.byha.top:444/admin/battle?', {'page': page})
+
     def getUserInRoom(self):
         a = str(self.APIGET('https://kana.byha.top:444/checkmate/room', {}))
         ans = ''
@@ -695,7 +750,40 @@ class Bot(object):
                 break
             uname.append(ans[:pos])
             ans = ans[pos + 1:]
-        return uname
+        if not uname:
+            return self.userinroom
+        else:
+            return uname
+
+    def detectUserInRoom(self):
+        self.userinroom = []
+        while True:
+            tmp = self.userinroom
+            sleep(0.5)
+            if not self.On:
+                return
+            self.userinroom = self.getUserInRoom()
+            for i in tmp:
+                if i not in self.userinroom:
+                    self.sendMessage(i + '离开了房间')
+            for i in self.userinroom:
+                if i not in tmp:
+                    self.sendMessage(i + '进入了房间')
+        return
+
+    def addBattle(self, winner):
+        k = reFindMatch(r'ay/[\s\S]*?"', self.GetBattle(1))[0]
+        url = k[3:len(k) - 1]
+        user = []
+        tmp = list(self.colortousername.keys())
+        for i in tmp:
+            user.append(self.colortousername[i])
+        for i in user:
+            self.data.appendByKey(i, url, 'battle')
+        self.battleData.setByKey(url, time.time(), 'time')
+        self.battleData.setByKey(url, len(user), 'playercount')
+        self.battleData.setByKey(url, winner, 'winner')
+        return
 
     def Main(self):
         self.driver = webdriver.Chrome()  # 浏览器
@@ -708,6 +796,7 @@ class Bot(object):
         ban = 0
         try:
             self.data.readData()
+            self.battleData.readData()
         except:
             pass
         freetime = 0
@@ -718,12 +807,14 @@ class Bot(object):
                 break
         print(self.cookie)
         threading.Thread(target=self.CommandLine, name="command").start()
+        threading.Thread(target=self.detectUserInRoom, name="detect").start()
         while True:
             curTime = datetime.datetime.now()
             if curTime.hour not in range(8, 23):
                 self.On = False
                 self.updateData()
                 self.data.saveData()
+                self.battleData.saveData()
                 self.Logout()
                 self.driver.close()
                 return
@@ -767,9 +858,11 @@ class Bot(object):
                             ban = time.time()
                         else:
                             self.sendMessage('您已单挑' + str(self.data.getByKey(tmp, 'wintime')) + '次')
-                    if self.mp.size not in [9, 10]:
+                    if len(self.colortousername) > 3:
                         self.gameRatingCalc(tmp)
+                    self.addBattle(tmp)
                     self.data.saveData()
+                    self.battleData.saveData()
             except:
                 pass
             try:

@@ -2,42 +2,61 @@ import json
 
 
 class DataBase(object):
-    def __init__(self):
+    def __init__(self, filename):
         self.data = {}
+        self.filename = filename
 
-    def getByKey(self, uname, key):
-        if uname in self.data and key in self.data[uname]:
-            return self.data[uname][key]
+    def getByKey(self, item, key=''):
+        if key == '' and item in self.data:
+            return self.data[item]
+        if item in self.data and key in self.data[item]:
+            return self.data[item][key]
         else:
             return 0
 
-    def addByKey(self, uname, x, key):
-        if uname in self.data and key in self.data[uname]:
-            self.data[uname][key] += x
+    def addByKey(self, item, x, key):
+        if item in self.data and key in self.data[item]:
+            self.data[item][key] += x
             return
-        elif uname not in self.data:
-            self.data[uname] = {}
-        self.data[uname][key] = x
+        elif item not in self.data:
+            self.data[item] = {}
+        self.data[item][key] = x
         return
 
-    def setByKey(self, uname, x, key):
-        if uname not in self.data:
-            self.data[uname] = {}
-        self.data[uname][key] = x
+    def setByKey(self, item, x, key):
+        if item not in self.data:
+            self.data[item] = {}
+        self.data[item][key] = x
+
+    def appendByKey(self, item, x, key):
+        if item in self.data and key in self.data[item]:
+            self.data[item][key].append(x)
+            return
+        elif item not in self.data:
+            self.data[item] = {}
+        self.data[item][key] = [x]
 
     def readData(self):
-        self.data = json.load(open("data.json", 'r'))
+        self.data = json.load(open(self.filename, 'r'))
         return
 
     def saveData(self):
-        json.dump(self.data, open("data.json", "w"))
+        json.dump(self.data, open(self.filename, "w"))
 
-    def getUserNameList(self):
+    def getItemList(self):
         return list(self.data.keys())
 
-    def deleteByKey(self, uname, key = ''):
+    def deleteByKey(self, item, key=''):
         if key == '':
-            del self.data[uname]
+            del self.data[item]
         else:
-            del self.data[uname][key]
+            del self.data[item][key]
         return
+
+    def findMatch(self, flt):  # 查找所有满足flt的数据
+        item = self.getItemList()
+        ans = []
+        for i in item:
+            if flt(self.getByKey(i)):
+                ans.append(i)
+        return ans
