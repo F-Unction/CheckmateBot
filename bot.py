@@ -60,11 +60,11 @@ class Bot(object):
         self.colortousername = {}
 
         self.commands = {'help (command)': '查看命令列表（或命令command的用法）',
-                         'query (i)': '查询自己（或玩家i）的用户信息',
+                         'query (i)': '查询自己（或玩家i）的用户信息（或查询Bot房回放i的对局信息）',
                          'info': '获取Rating排行榜前10名', 'predict (i)': '预测自己（或房内玩家i）下局Rating变化',
-                         'stats (i)': '获取自己（或玩家i）的统计数据'}
+                         'stats (i)': '获取自己（或玩家i）的统计数据', 'recent (i) [pos]': '查询自己（或玩家i）的最近第pos个Bot房回放'}
         self.aToB = {'help': 'help (command)', 'info': 'info', 'query': 'query (i)', 'predict': 'predict (i)',
-                     'stats': 'stats (i)'}
+                     'stats': 'stats (i)', 'recent': 'recent (i) [pos]'}
         self.tips = ['Bot会智能守家', '<del>杀死Bot的次数越多越容易触发特异性打击</del>', '<del>Bot已参战</del>', '<del>如果没有足够实力请不要与Bot单挑</del>',
                      '<del>输入INFO可以获取实力排行榜</del>']
         tmp = list(self.commands.keys())
@@ -181,6 +181,12 @@ class Bot(object):
         except:
             return
 
+    def MsgPattern(self, data):
+        ans = ''
+        for i in data:
+            ans += i[0] + ':' + str(i[1]) + '<br>'
+        return ans
+
     def CommandLine(self):  # 命令行
         while True:
             sleep(0.3)
@@ -223,12 +229,19 @@ class Bot(object):
                     uname = cur[0]
                 elif tot == 1:
                     uname = tmp[1]
-                if uname != '':
-                    self.sendMessage('Rating: ' + str(self.data.getByKey(uname, 'Rating')) + '<br>'
-                                     + '单挑胜利次数: ' + str(self.data.getByKey(uname, 'wintime')) + '<br>' +
-                                     '剩余封禁天数: ' + str(self.data.getByKey(uname, 'ban')) + '<br>' +
-                                     '最近Rating更新时间: ' + str(
-                        int(time.time() - self.data.getByKey(uname, 'lastratingupdated'))) + '秒前<br>')
+                if uname in self.battleData.getItemList():
+                    self.sendMessage('<br>' + self.MsgPattern([['人数', self.battleData.getByKey(uname, 'playercount')],
+                                                               ['赢家', self.battleData.getByKey(uname, 'winner')],
+                                                               ['回放距今时间(s)', int(
+                                                                   time.time() - self.battleData.getByKey(uname,
+                                                                                                          'time'))]]))
+                elif uname != '':
+                    self.sendMessage('<br>' + self.MsgPattern([['Rating', self.data.getByKey(uname, 'Rating')],
+                                                               ['单挑胜利次数', self.data.getByKey(uname, 'wintime')],
+                                                               ['剩余封禁天数', self.data.getByKey(uname, 'ban')],
+                                                               ['最近Rating更新距今时间(s)', int(
+                                                                   time.time() - self.data.getByKey(uname,
+                                                                                                    'lastratingupdated'))]]))
             if tmp[0] == 'info':
                 uname = self.data.getItemList()
                 winners = '<strong>Rating排行榜：</strong><br>'
@@ -335,6 +348,27 @@ class Bot(object):
                     else:
                         ans += str(round(stats[i][1] / stats[i][0] * 100, 1)) + '%<br>'
                 self.sendMessage(ans)
+            if tmp[0] == 'recent':
+                if tot == 1:
+                    curuser = cur[0]
+                    pos = tmp[1]
+                elif tot == 2:
+                    curuser = tmp[1]
+                    pos = tmp[2]
+                else:
+                    self.sendMessage('需要1或2个参数，发现' + str(tot) + '个')
+                    continue
+                battle = self.data.getByKey(curuser, 'battle')
+                try:
+                    pos = int(pos)
+                except:
+                    self.sendMessage('参数应为整数')
+                else:
+                    if pos < 1 or pos > len(battle):
+                        self.sendMessage('参数不在范围内')
+                    else:
+                        url = battle[len(battle) - pos]
+                        self.sendMessage(r'<a href="/checkmate/replay/' + url + r'">回放</a>')
 
             if tmp[0] == 'kill':
                 if cur[0] == self.controller:
@@ -546,9 +580,9 @@ class Bot(object):
         return 0
 
     def sendMessage(self, msg):  # 发送消息
-        if len(msg) >= 92:
-            self.sendMessage(msg[0:90])
-            self.sendMessage(msg[90:len(msg)])
+        if len(msg) > 95:
+            self.sendMessage(msg[0:95])
+            self.sendMessage(msg[95:len(msg)])
         try:
             messageBox = self.driver.find_element_by_id("msg-sender")
             ac = ActionChains(self.driver)
@@ -793,7 +827,7 @@ class Bot(object):
         self.On = True
         self.table = self.driver.find_element_by_tag_name("tbody")
         flag = False
-        ban = 0
+        ban = False
         try:
             self.data.readData()
             self.battleData.readData()
@@ -847,7 +881,6 @@ class Bot(object):
                     ac = ActionChains(self.driver)
                     ac.send_keys(Keys.ENTER).perform()
                     if self.data.getByKey(tmp, 'ban') > 0 and self.mp.size in [9, 10]:
-                        ban = time.time()
                         self.sendMessage('您已被封禁，剩余' + str(self.data.getByKey(tmp, 'ban')) + '天')
                     elif tmp != self.username and self.mp.size in [9, 10]:
                         self.data.addByKey(tmp, 1, 'wintime')
@@ -855,7 +888,6 @@ class Bot(object):
                             self.data.setByKey(tmp, 7, 'ban')
                             self.data.setByKey(tmp, 0, 'Rating')
                             self.sendMessage('您已被封禁，剩余' + str(self.data.getByKey(tmp, 'ban')) + '天')
-                            ban = time.time()
                         else:
                             self.sendMessage('您已单挑' + str(self.data.getByKey(tmp, 'wintime')) + '次')
                     if len(self.colortousername) > 3:
@@ -873,13 +905,21 @@ class Bot(object):
                 randomBtn.click()
             except:
                 pass
+            ban = False
+            if self.userCount == 1:
+                ban = True
+            elif self.userCount == 2:
+                for i in self.userinroom:
+                    if self.data.getByKey(i, 'ban') > 0:
+                        ban = True
+                        break
             try:
                 if self.isAutoReady and self.driver.find_element_by_id("ready").get_attribute(
-                        'innerHTML') == "准备" and time.time() - ban > 600:
+                        'innerHTML') == "准备" and not ban:
                     ac = ActionChains(self.driver)
                     ac.click(self.driver.find_element_by_id("ready")).perform()
                 if self.driver.find_element_by_id("ready").get_attribute(
-                        'innerHTML') == "取消准备" and time.time() - ban <= 600:
+                        'innerHTML') == "取消准备" and ban:
                     ac = ActionChains(self.driver)
                     ac.click(self.driver.find_element_by_id("ready")).perform()
             except:
