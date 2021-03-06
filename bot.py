@@ -61,9 +61,8 @@ class Bot(object):
 
         self.commands = {'help (command)': '查看命令列表（或命令command的用法）',
                          'query (i)': '查询自己（或玩家i）的用户信息（或查询Bot房回放i的对局信息）',
-                         'info': '获取Rating排行榜前10名', 'predict (i)': '预测自己（或房内玩家i）下局Rating变化',
                          'stats (i)': '获取自己（或玩家i）的统计数据', 'recent (i) [pos]': '查询自己（或玩家i）的最近第pos个Bot房回放'}
-        self.aToB = {'help': 'help (command)', 'info': 'info', 'query': 'query (i)', 'predict': 'predict (i)',
+        self.aToB = {'help': 'help (command)', 'query': 'query (i)',
                      'stats': 'stats (i)', 'recent': 'recent (i) [pos]'}
         self.tips = ['Bot会智能守家', '<del>杀死Bot的次数越多越容易触发特异性打击</del>', '<del>Bot已参战</del>', '<del>如果没有足够实力请不要与Bot单挑</del>',
                      '<del>输入INFO可以获取实力排行榜</del>']
@@ -236,93 +235,8 @@ class Bot(object):
                                                                    time.time() - self.battleData.getByKey(uname,
                                                                                                           'time'))]]))
                 elif uname != '':
-                    self.sendMessage('<br>' + self.MsgPattern([['Rating', self.data.getByKey(uname, 'Rating')],
-                                                               ['单挑胜利次数', self.data.getByKey(uname, 'wintime')],
-                                                               ['剩余封禁天数', self.data.getByKey(uname, 'ban')],
-                                                               ['最近Rating更新距今时间(s)', int(
-                                                                   time.time() - self.data.getByKey(uname,
-                                                                                                    'lastratingupdated'))]]))
-            if tmp[0] == 'info':
-                uname = self.data.getItemList()
-                winners = '<strong>Rating排行榜：</strong><br>'
-                winnerList = []
-                cmp = lambda s1: s1[1]
-                for i in uname:
-                    uid = self.GetUidByUsername(i)
-                    if time.time() - self.data.getByKey(i, 'lastratingupdated') < 604800 and (
-                            self.GetUserInfoByUid(uid)['bili_uid'] != 0 or self.GetUserLevelByUid(uid) >= 6):
-                        winnerList.append([i, self.data.getByKey(i, 'Rating')])
-                winnerList.sort(key=cmp, reverse=True)
-                cnt = 0
-                for i in winnerList:
-                    winners += '#' + str(cnt + 1) + ',' + i[0] + ':' + str(i[1]) + '<br>'
-                    if len(winners) >= 70:
-                        self.sendMessage('<br>' + winners)
-                        winners = ''
-                    cnt += 1
-                    if cnt >= 10:
-                        break
-                if winners != '':
-                    self.sendMessage('<br>' + winners)
-            if tmp[0] == 'predict':
-                if tot == 0:
-                    curuser = cur[0]
-                elif tot == 1:
-                    curuser = tmp[1]
-                else:
-                    self.sendMessage('需要0或1个参数，发现' + str(tot) + '个')
-                    continue
-                if curuser not in self.userinroom:
-                    self.sendMessage('玩家不在房间中')
-                    continue
-                winner = curuser
-                firstAmount = 0
-                firstRating = -1
-                firstBounce = 0
-                for j in self.userinroom:
-                    if j == winner:
-                        firstAmount += 1
-                        firstRating = max(firstRating, self.data.getByKey(j, 'Rating'))
-                for k in self.userinroom:
-                    if k == winner:
-                        continue
-                    score = round((self.data.getByKey(k, 'Rating') - firstRating) / 1000) + 3
-                    if score <= 0:
-                        score = 1
-                    if score > 10:
-                        score = 10
-                    firstBounce += score
-                WinRating = self.changeRating(winner, firstBounce / firstAmount, self.data.getByKey(winner, 'Rating'),
-                                              True)
-                MaxLoseRating = -99999
-                MinLoseRating = 99999
-                AvgLoseRating = 0
-                for winner in self.userinroom:
-                    if winner == curuser:
-                        continue
-                    firstAmount = 0
-                    firstRating = -1
-                    firstBounce = 0
-                    for j in self.userinroom:
-                        if j == winner:
-                            firstAmount += 1
-                            firstRating = max(firstRating, self.data.getByKey(j, 'Rating'))
-                    k = curuser
-                    score = round((self.data.getByKey(k, 'Rating') - firstRating) / 1000) + 3
-                    if score <= 0:
-                        score = 1
-                    if score > 10:
-                        score = 10
-                    firstBounce += score
-                    currating = self.changeRating(k, -score, self.data.getByKey(k, 'Rating'), True)
-                    MaxLoseRating = max(currating, MaxLoseRating)
-                    MinLoseRating = min(MinLoseRating, currating)
-                    AvgLoseRating += currating
-                AvgLoseRating //= len(self.userinroom) - 1
-                y = -AvgLoseRating / WinRating
-                self.sendMessage('<br>Win:' + str(WinRating) + '<br>Lose:' + str(MinLoseRating) + '~' + str(
-                    MaxLoseRating) + ', Avg.' + str(AvgLoseRating) + '<br>推荐胜率：' + str(
-                    round(100 / (y + 1) * y, 1)) + '%')
+                    self.sendMessage('<br>' + self.MsgPattern([['单挑胜利次数', self.data.getByKey(uname, 'wintime')],
+                                                               ['剩余封禁天数', self.data.getByKey(uname, 'ban')]]))
             if tmp[0] == 'stats':
                 if tot == 0:
                     curuser = cur[0]
@@ -680,51 +594,11 @@ class Bot(object):
             self.moveTo(target[0], target[1])
         return
 
-    def changeRating(self, username, rating, nowRating, predict=False):
-        if rating > 0:
-            rating = round(rating * (abs(49.5 - 0.01 * nowRating) + 50.5 - 0.01 * nowRating) / 10)
-        else:
-            rating = rating * round(0.002 * nowRating + 1)
-        if predict:
-            return rating
-        if nowRating >= 0 and nowRating + rating < 0:
-            self.data.setByKey(username, 0, 'Rating')
-        else:
-            self.data.addByKey(username, rating, 'Rating')
-        self.data.setByKey(username, time.time(), 'lastratingupdated')
-        return
-
-    def gameRatingCalc(self, winner):
-        user = []
-        tmp = list(self.colortousername.keys())
-        for i in tmp:
-            user.append(self.colortousername[i])
-        firstAmount = 0
-        firstRating = -1
-        firstBounce = 0
-        for j in user:
-            if j == winner:
-                firstAmount += 1
-                firstRating = max(firstRating, self.data.getByKey(j, 'Rating'))
-        for k in user:
-            if k == winner:
-                continue
-            score = round((self.data.getByKey(k, 'Rating') - firstRating) / 1000) + 3
-            if score <= 0:
-                score = 1
-            if score > 10:
-                score = 10
-            firstBounce += score
-            self.changeRating(k, -score, self.data.getByKey(k, 'Rating'));
-        self.changeRating(winner, firstBounce / firstAmount, self.data.getByKey(winner, 'Rating'))
-        return
-
     def updateData(self):  # 每日一次
         uname = self.data.getItemList()
         for i in uname:
             wintime = self.data.getByKey(i, 'wintime')
             ban = self.data.getByKey(i, 'ban')
-            rating = self.data.getByKey(i, 'Rating')
             if wintime > 0:
                 self.data.setByKey(i, 0, 'wintime')
             if ban > 0:
@@ -742,24 +616,6 @@ class Bot(object):
         res = requests.post(baseurl, data=data, headers=headers)
         res.encoding = 'utf-8'
         return res.text
-
-    def GetUserInfoByUid(self, uid):
-        res = json.loads(self.APIGET('https://kana.byha.top:444/api/user/info?', {'uid': str(uid)}))
-        return res['msg']
-
-    def GetUserLevelByUid(self, uid):
-        res = json.loads(self.APIPOST('https://kana.byha.top:444/api/user/level', {'uid': str(uid)}))
-        return res['msg']
-
-    def GetUidByUsername(self, username):
-        res = self.data.getByKey(username, 'uid')
-        if res != 0:
-            return res
-        res = json.loads(self.APIGET('https://kana.byha.top:444/api/user/name2id?', {'uname': username}))
-        if res['msg'] == 'No Such User':
-            return 0
-        self.data.setByKey(username, res['msg'], 'uid')
-        return res['msg']
 
     def GetBattle(self, page):
         return self.APIGET('https://kana.byha.top:444/admin/battle?', {'page': page})
@@ -871,6 +727,15 @@ class Bot(object):
                 flag = True
             except:
                 continue
+            try:
+                speed = int(self.driver.find_element_by_id('settings-gamespeed-input-display').get_attribute('innerText'))
+                if speed != '4':
+                    for _ in range(4 - speed):
+                        ActionChains(self.driver).send_keys_to_element(
+                            self.driver.find_elements_by_class_name('custom-range')[0],
+                            Keys.RIGHT).perform()
+            except:
+                pass
             freetime += 1
             if freetime % 480 == 10 and not self.isSecret:
                 self.sendMessage("【提示】" + random.choice(self.tips))
@@ -886,12 +751,9 @@ class Bot(object):
                         self.data.addByKey(tmp, 1, 'wintime')
                         if self.data.getByKey(tmp, 'wintime') > 30:
                             self.data.setByKey(tmp, 7, 'ban')
-                            self.data.setByKey(tmp, 0, 'Rating')
                             self.sendMessage('您已被封禁，剩余' + str(self.data.getByKey(tmp, 'ban')) + '天')
                         else:
                             self.sendMessage('您已单挑' + str(self.data.getByKey(tmp, 'wintime')) + '次')
-                    if len(self.colortousername) > 3:
-                        self.gameRatingCalc(tmp)
                     self.addBattle(tmp)
                     self.data.saveData()
                     self.battleData.saveData()

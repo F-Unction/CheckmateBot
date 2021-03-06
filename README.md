@@ -33,8 +33,6 @@ CheckmateBot
 | :----------: | :----------: | :----------: | :----------: |
 |```help (command)```  |查看命令列表（或命令command的用法）  |/|否|
 |```query (i)```  |查询自己（或玩家i）的用户信息（或查询Bot房回放i的对局信息）  |/|否|
-|```info```  |获取Rating排行榜前10名  |/| 否|
-|```predict (i)```  |预测自己（或房内玩家i）下局Rating变化  |/| 否|
 |```stats (i)```  |获取自己（或玩家i）的统计数据|/| 否|
 |```recent (i) [pos]```|查询自己（或玩家i）的最近第pos个Bot房回放|/|否
 |```kill```  |关闭Bot  |/|**是**|
@@ -42,5 +40,4 @@ CheckmateBot
 |```setsecret```  |切换房间私密状态  |/|**是**|
 |```savedata```  |保存游戏数据  |/|**是**|
 |```readdata```  |读取游戏数据  |/|**是**|
-|```setautosave```  |切换自动保存  |每局游戏结束后保存一次|**是**|
-|```setdata [uname] [key] [x]```  |设置用户名为uname的玩家的key为x  |key可以是`Rating`、`ban`等，详见数据库|**是**|
+|```setdata [uname] [key] [x]```  |设置用户名为uname的玩家的key为x  |key可以是`wintime`、`ban`等，详见数据库|**是**|
