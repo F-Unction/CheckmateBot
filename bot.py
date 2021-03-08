@@ -15,11 +15,11 @@ from tencentcloud.common.profile.http_profile import HttpProfile
 from tencentcloud.common.exception.tencent_cloud_sdk_exception import TencentCloudSDKException
 from tencentcloud.ocr.v20181119 import ocr_client, models
 import base64
-import requests
 import threading
 
 from map import *
 from database import *
+import api
 
 
 def reFindMatch(r, t):
@@ -605,23 +605,8 @@ class Bot(object):
                 self.data.addByKey(i, -1, 'ban')
         return
 
-    def APIGET(self, baseurl, params):
-        headers = {'Cookie': self.cookie}
-        res = requests.get(baseurl, params=params, headers=headers)
-        res.encoding = 'utf-8'
-        return res.text
-
-    def APIPOST(self, baseurl, data):
-        headers = {'Cookie': self.cookie}
-        res = requests.post(baseurl, data=data, headers=headers)
-        res.encoding = 'utf-8'
-        return res.text
-
-    def GetBattle(self, page):
-        return self.APIGET('https://kana.byha.top:444/admin/battle?', {'page': page})
-
     def getUserInRoom(self):
-        a = str(self.APIGET('https://kana.byha.top:444/checkmate/room', {}))
+        a = str(api.APIGET('https://kana.byha.top:444/checkmate/room', {}))
         ans = ''
         uname = []
         while True:
@@ -662,7 +647,7 @@ class Bot(object):
         return
 
     def addBattle(self, winner):
-        k = reFindMatch(r'ay/[\s\S]*?"', self.GetBattle(1))[0]
+        k = reFindMatch(r'ay/[\s\S]*?"', api.GetBattleByPage(1))[0]
         url = k[3:len(k) - 1]
         user = []
         tmp = list(self.colortousername.keys())
@@ -693,9 +678,9 @@ class Bot(object):
         tmp = self.driver.get_cookies()
         for i in tmp:
             if i['name'] == 'client_session':
-                self.cookie = 'client_session=' + i['value']
+                api.cookie = 'client_session=' + i['value']
                 break
-        print(self.cookie)
+        print(api.cookie)
         threading.Thread(target=self.CommandLine, name="command").start()
         threading.Thread(target=self.detectUserInRoom, name="detect").start()
         while True:
@@ -728,7 +713,8 @@ class Bot(object):
             except:
                 continue
             try:
-                speed = int(self.driver.find_element_by_id('settings-gamespeed-input-display').get_attribute('innerText'))
+                speed = int(
+                    self.driver.find_element_by_id('settings-gamespeed-input-display').get_attribute('innerText'))
                 if speed != '4':
                     for _ in range(4 - speed):
                         ActionChains(self.driver).send_keys_to_element(
