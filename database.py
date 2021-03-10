@@ -6,7 +6,9 @@ class DataBase(object):
         self.data = {}
         self.filename = filename
 
-    def getByKey(self, item, key=''):
+    def getByKey(self, item, key=''): # 请注意返回str类型
+        item = str(item)
+        key = str(key)
         if key == '' and item in self.data:
             return self.data[item]
         if item in self.data and key in self.data[item]:
@@ -15,6 +17,8 @@ class DataBase(object):
             return 0
 
     def addByKey(self, item, x, key):
+        item = str(item)
+        key = str(key)
         if item in self.data and key in self.data[item]:
             self.data[item][key] += x
             return
@@ -24,11 +28,15 @@ class DataBase(object):
         return
 
     def setByKey(self, item, x, key):
+        item = str(item)
+        key = str(key)
         if item not in self.data:
             self.data[item] = {}
         self.data[item][key] = x
 
     def appendByKey(self, item, x, key):
+        item = str(item)
+        key = str(key)
         if item in self.data and key in self.data[item]:
             self.data[item][key].append(x)
             return
@@ -47,6 +55,8 @@ class DataBase(object):
         return list(self.data.keys())
 
     def deleteByKey(self, item, key=''):
+        item = str(item)
+        key = str(key)
         if key == '':
             del self.data[item]
         else:

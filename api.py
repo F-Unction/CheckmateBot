@@ -29,6 +29,23 @@ def GetUserLevelByUid(uid):
     return res['msg']
 
 
+def GetUserLevelByExp(exp):
+    if exp >= 28800:
+        return 6
+    elif exp >= 10800:
+        return 5
+    elif exp >= 4500:
+        return 4
+    elif exp >= 1500:
+        return 3
+    elif exp >= 200:
+        return 2
+    elif exp >= 100:
+        return 1
+    else:
+        return 0
+
+
 def GetUserExpByUid(uid):
     res = json.loads(APIPOST('https://kana.byha.top:444/api/user/exp', {'uid': uid}))
     return res['msg']

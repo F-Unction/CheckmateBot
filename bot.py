@@ -64,8 +64,7 @@ class Bot(object):
                          'stats (i)': '获取自己（或玩家i）的统计数据', 'recent (i) [pos]': '查询自己（或玩家i）的最近第pos个Bot房回放'}
         self.aToB = {'help': 'help (command)', 'query': 'query (i)',
                      'stats': 'stats (i)', 'recent': 'recent (i) [pos]'}
-        self.tips = ['Bot会智能守家', '<del>杀死Bot的次数越多越容易触发特异性打击</del>', '<del>Bot已参战</del>', '<del>如果没有足够实力请不要与Bot单挑</del>',
-                     '<del>输入INFO可以获取实力排行榜</del>']
+        self.tips = [r'在<a href="/post/16903">/post/16903</a>查看统计数据']
         tmp = list(self.commands.keys())
         for x in tmp:
             self.tips.append('命令' + x + ': ' + self.commands[x])
@@ -186,6 +185,23 @@ class Bot(object):
             ans += i[0] + ':' + str(i[1]) + '<br>'
         return ans
 
+    def updateRate(self, curuser):
+        battle = self.data.getByKey(curuser, 'battle')
+        if battle == 0:
+            return
+        stats = [[0, 0] for _ in range(10)]
+        for i in battle:
+            stats[self.battleData.getByKey(i, 'playercount')][0] += 1
+            if self.battleData.getByKey(i, 'winner') == curuser:
+                stats[self.battleData.getByKey(i, 'playercount')][1] += 1
+        for i in range(2, 9):
+            if stats[i][0] == 0:
+                stats[i].append(0.0)
+            else:
+                stats[i].append(round(stats[i][1] / stats[i][0] * 100.0, 1))
+        self.data.setByKey(curuser, stats, 'rate')
+        return
+
     def CommandLine(self):  # 命令行
         while True:
             sleep(0.3)
@@ -245,22 +261,14 @@ class Bot(object):
                 else:
                     self.sendMessage('需要0或1个参数，发现' + str(tot) + '个')
                     continue
-                battle = self.data.getByKey(curuser, 'battle')
-                if battle == 0:
+                self.updateRate(curuser)
+                stats = self.data.getByKey(curuser, 'rate')
+                if stats == 0:
                     self.sendMessage('No data')
                     continue
-                stats = [[0, 0] for _ in range(10)]
-                for i in battle:
-                    stats[self.battleData.getByKey(i, 'playercount')][0] += 1
-                    if self.battleData.getByKey(i, 'winner') == curuser:
-                        stats[self.battleData.getByKey(i, 'playercount')][1] += 1
                 ans = '<br>'
                 for i in range(2, 9):
-                    ans += str(i) + '人局：' + str(stats[i][0]) + '场， 胜率'
-                    if stats[i][0] == 0:
-                        ans += '0.0%<br>'
-                    else:
-                        ans += str(round(stats[i][1] / stats[i][0] * 100, 1)) + '%<br>'
+                    ans += str(i) + '人局：' + str(stats[i][0]) + '场， 胜率' + str(stats[i][2]) + '%<br>'
                 self.sendMessage(ans)
             if tmp[0] == 'recent':
                 if tot == 1:
@@ -660,6 +668,94 @@ class Bot(object):
         self.battleData.setByKey(url, winner, 'winner')
         return
 
+    def Analyze(self):  # 数据分析，每日一次
+        analyzeData = DataBase('analyze.json')
+        uid = 1
+        maxuid = 1
+        while True:
+            info = api.GetUserInfoByUid(uid)
+            if info == '数据库错误':
+                if uid <= 3800:
+                    uid += 1
+                    continue
+                else:
+                    break
+            exp = api.GetUserExpByUid(uid)
+            analyzeData.setByKey(uid, info, 'info')
+            analyzeData.setByKey(uid, exp, 'exp')
+            maxuid = uid
+            uid += 1
+        analyzeData.saveData()
+        ans = ''
+        curTime = datetime.datetime.now()
+        ans += '更新于' + str(curTime.year) + '.' + str(curTime.month) + '.' + str(curTime.day) + ',' + str(
+            curTime.hour) + ':' + str(curTime.minute) + ':' + str(curTime.second) + '\n\n'
+        tmp = analyzeData.getItemList()
+        for i in range(len(tmp)):
+            tmp[i] = int(tmp[i])
+        tot = 0
+        for uid in tmp:
+            if uid != 1:
+                tot += int(analyzeData.getByKey(uid, 'exp'))
+        ans += '### 经验值分布统计（排除admin）\n\n'
+        ans += '用户经验总和：' + str(tot) + '\n\n'
+        role = lambda a: a[1]
+        k = []
+        for i in range(1, maxuid // 1000 + 2):
+            l = max((i - 1) * 1000 + 1, 2)
+            r = min(i * 1000, maxuid)
+            if l > maxuid:
+                break
+            tot = 0
+            maxexp = 0
+            maxuser = 'undefined'
+            for j in range(l, r + 1):
+                if j in tmp:
+                    exp = int(analyzeData.getByKey(j, 'exp'))
+                    uname = analyzeData.getByKey(j, 'info')['username']
+                    tot += exp
+                    k.append([uname, exp])
+                    if exp > maxexp:
+                        maxuser = uname
+                        maxexp = exp
+            ans += str(l) + '~' + str(r) + '总和：' + str(tot) + '，最大值' + maxuser + '（' + str(maxexp) + '经验）\n\n'
+        k.sort(key=role, reverse=True)
+        ans += '经验排行榜前50名：\n\n'
+        for i in range(50):
+            ans += '#' + str(i + 1) + '：' + k[i][0] + '，' + str(k[i][1]) + '经验\n\n'
+        tmp = self.data.getItemList()
+        k = [[] for _ in range(10)]
+        ans += '### 对局胜率统计 [参战>=20局且(6级或有B站认证)才可上榜]\n\n'
+        for curuser in tmp:
+            self.updateRate(curuser)
+            stats = self.data.getByKey(curuser, 'rate')
+            if stats == 0:
+                continue
+            for i in range(3, 9):
+                if stats[i][0] >= 20:
+                    uid = api.GetUidByUsername(curuser)
+                    if analyzeData.getByKey(uid, 'info')['bili_uid'] != 0 or api.GetUserLevelByExp(
+                            analyzeData.getByKey(uid, 'exp')) == 6:
+                        k[i].append([curuser, stats[i][2]])
+        role = lambda a: a[1]
+        for i in range(3, 9):
+            k[i].sort(key=role, reverse=True)
+            ans += str(i) + '人局胜率排行榜前5名：\n\n'
+            for j in range(min(5, len(k[i]))):
+                ans += '#' + str(j + 1) + '：' + k[i][j][0] + '，胜率' + str(k[i][j][1]) + '%\n\n'
+        ans += '### 今日数据\n\n'
+        battle = self.battleData.getItemList()
+        cnt = [0 for _ in range(10)]
+        for j in range(len(battle) - 1, -1, -1):
+            curbattle = battle[j]
+            if time.time() - int(self.battleData.getByKey(curbattle, 'time')) >= 86400:
+                break
+            cnt[int(self.battleData.getByKey(curbattle, 'playercount'))] += 1
+        for i in range(2, 9):
+            ans += str(i) + '人局，' + str(cnt[i]) + '场\n\n'
+        api.UpdatePost(16903, ans)
+        return
+
     def Main(self):
         self.driver = webdriver.Chrome()  # 浏览器
         # self.driver = webdriver.Firefox()
@@ -688,6 +784,8 @@ class Bot(object):
             if curTime.hour not in range(8, 23):
                 self.On = False
                 self.updateData()
+                self.driver.get('https://kana.byha.top:444/')
+                self.Analyze()
                 self.data.saveData()
                 self.battleData.saveData()
                 self.Logout()
