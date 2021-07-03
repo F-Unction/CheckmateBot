@@ -1,8 +1,8 @@
-geckodriver.log
-/.idea
-test.py
-bot2.py
+venv
 data.json
 .idea
 config.json
-battle.json
+__pycache__
+geckodriver.log
+a.png
+test.py
