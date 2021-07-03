@@ -598,9 +598,10 @@ class Bot(object):
                     ac = ActionChains(self.driver)
                     ac.send_keys(Keys.ENTER).perform()
                     self.game_count[len(self.user_in_game)] += 1
-                    current_win_time = self.user_remain_win_time.get(winner, self.default_user_remain_win_time)
-                    self.user_remain_win_time[winner] = current_win_time - 1
-                    self.send_message('剩余单挑次数' + str(current_win_time - 1) + '次')
+                    if len(self.user_in_game) == 2 and winner != self.username:
+                        current_win_time = self.user_remain_win_time.get(winner, self.default_user_remain_win_time)
+                        self.user_remain_win_time[winner] = current_win_time - 1
+                        self.send_message('剩余单挑次数' + str(current_win_time - 1) + '次')
             except:
                 pass
             try:
