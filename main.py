@@ -446,7 +446,7 @@ class Bot(object):
         self.user_in_room = []
         while True:
             tmp = self.user_in_room
-            sleep(1)
+            sleep(10)
             if not self.on:
                 return
             self.user_in_room = self.getUserInRoom()
