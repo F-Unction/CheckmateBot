@@ -53,7 +53,8 @@ class Bot(object):
 
         # 以下是每日更新的数据
         self.user_remain_win_time = {}  # 每个玩家的单挑剩余次数
-        self.game_count = []  # 每种对局的次数（用于数据分析）
+        self.game_count = []  # 每种对局的次数
+        self.user_score = {}  # 每个玩家的分数
 
     def send_key_to_table(self, key):
         """发送按键"""
@@ -517,6 +518,26 @@ class Bot(object):
         ans += '### 今日数据\n\n'
         for i in range(2, 9):
             ans += str(i) + '人局，' + str(self.game_count[i]) + '场\n\n'
+        ans += '单挑排行榜：（按剩余单挑次数排列）\n\n'
+        k = []
+        for i in uid_keys:
+            cur_uname = analyze_data[i].get('username', 'undefined')
+            cur_win_time = self.user_remain_win_time.get(cur_uname, self.default_user_remain_win_time)
+            if cur_win_time < self.default_user_remain_win_time:
+                k.append([i, cur_win_time])
+        k.sort(key=role)
+        for i in range(len(k)):
+            ans += '#' + str(i + 1) + '：' + at_player_by_uid(k[i][0]) + '，剩余' + str(k[i][1]) + '次\n\n'
+        ans += '分数排行榜\n\n'
+        k = []
+        for i in uid_keys:
+            cur_uname = analyze_data[i].get('username', 'undefined')
+            cur_score = self.user_score.get(cur_uname, 0)
+            if cur_score > 0:
+                k.append([i, cur_score])
+        k.sort(key=role, reverse=True)
+        for i in range(len(k)):
+            ans += '#' + str(i + 1) + '：' + at_player_by_uid(k[i][0]) + '，' + str(k[i][1]) + '分\n\n'
         ans += '### 波特家族统计\n\n'
         cnt = 0
         for i in uid_keys:
@@ -531,6 +552,7 @@ class Bot(object):
         """清除每日数据"""
         self.user_remain_win_time = {}
         self.game_count = [0, 0, 0, 0, 0, 0, 0, 0, 0]
+        self.user_score = {}
 
     def Main(self):
         self.driver = webdriver.Firefox()  # 浏览器
@@ -591,6 +613,8 @@ class Bot(object):
             free_time += 1
             if free_time % 480 == 10 and not self.isSecret:
                 self.send_message("【提示】" + random.choice(self.tips))
+            if free_time % 1000 == 999 and not self.isSecret:
+                self.driver.refresh() # 闲时自动刷新，防卡
             try:
                 winner = self.driver.find_element_by_id('swal2-content').get_attribute('innerText')
                 winner = winner[0:winner.find("赢了")]
@@ -598,10 +622,17 @@ class Bot(object):
                     ac = ActionChains(self.driver)
                     ac.send_keys(Keys.ENTER).perform()
                     self.game_count[len(self.user_in_game)] += 1
-                    if len(self.user_in_game) == 2 and winner != self.username:
+                    game_size = len(self.user_in_game)
+                    if game_size == 2 and winner != self.username:
                         current_win_time = self.user_remain_win_time.get(winner, self.default_user_remain_win_time)
                         self.user_remain_win_time[winner] = current_win_time - 1
                         self.send_message('剩余单挑次数' + str(current_win_time - 1) + '次')
+                    if game_size > 2:
+                        current_score = self.user_score.get(winner, 0)
+                        addition = 2 ** (game_size - 3)
+                        self.user_score[winner] = current_score + addition
+                        self.send_message(
+                            '赢家' + winner + '目前' + str(self.user_score[winner]) + '分（+' + str(addition) + '）')
             except:
                 pass
             try:
