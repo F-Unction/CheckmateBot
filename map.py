@@ -13,6 +13,7 @@ class Node:
         self.tmp = tmp
         self.belong = belong  # 1 ...
         self.type = type  # land city general unknown mountain empty empty-city
+        self.cost = 0
 
 
 def distRouteNode(a, b):
@@ -36,12 +37,6 @@ class Map:
                 tmp.append((px, py))
         return tmp
 
-    def getCost(self, a):  # 获取通过这块土地的花费
-        if self.mp[a[0]][a[1]].belong == 1:
-            return 1
-        else:
-            return max(self.mp[a[0]][a[1]].tmp, 1)
-
     def AStar(self, start, goal):  # https://blog.csdn.net/adamshan/article/details/79945175
         frontier = PriorityQueue()
         frontier.put((0, start))
@@ -54,7 +49,7 @@ class Map:
             if current == goal:
                 break
             for next in self.getNeighbours(current):
-                new_cost = cost_so_far[current] + self.getCost(next)
+                new_cost = cost_so_far[current] + self.mp[next[0]][next[1]].cost
                 if next not in cost_so_far or new_cost < cost_so_far[next]:
                     cost_so_far[next] = new_cost
                     priority = new_cost + distRouteNode(goal, next)

@@ -1,4 +1,5 @@
 import base64
+import copy
 import datetime
 import json
 import random
@@ -128,6 +129,11 @@ class Bot(object):
                     self.mp.mp[i][j].tmp = int(p)
                 except:
                     self.mp.mp[i][j].tmp = 0
+                if self.mp.mp[i][j].belong != 1:
+                    self.mp.mp[i][j].cost = max(self.mp.mp[i][j].tmp, 2)
+                else:
+                    self.mp.mp[i][j].cost = 1
+
         return
 
     def select_land(self, x, y):  # 选择土地
@@ -235,12 +241,17 @@ class Bot(object):
         print("登录成功！")
         return
 
-    def moveTo(self, x, y):  # 移动
-        path, cost = self.mp.findPath(self.curx, self.cury, x, y)
+    def moveTo(self, x, y, curx=0, cury=0):  # 移动
+        if curx == 0 and cury == 0:
+            curx = self.curx
+            cury = self.cury
+        path, cost = self.mp.findPath(curx, cury, x, y)
+        ans = copy.deepcopy(path)
         if path:
             path.pop(0)
-            cx = self.curx
-            cy = self.cury
+            cx = curx
+            cy = cury
+            self.movements.append([cx, cy])
             while path:
                 px = path[0][0]
                 py = path[0][1]
@@ -255,14 +266,21 @@ class Bot(object):
                 cx = px
                 cy = py
                 path.pop(0)
-        return
+        return ans
 
     def flushMovements(self):  # 更新移动
         tmp = self.mp.mp[self.homex][self.homey].tmp
-        self.send_key_to_table(self.movements[0])
-        if self.mp.mp[self.curx][self.cury].belong != 1:
-            self.movements = []
-            return
+        curm = self.movements[0]
+        while isinstance(curm, list):
+            self.select_land(curm[0], curm[1])
+            self.movements.pop(0)
+            if self.movements == []:
+                return
+            curm = self.movements[0]
+        self.send_key_to_table(curm)
+        # if self.mp.mp[self.curx][self.cury].belong != 1 and self.mp.mp[self.curx][self.cury].type != 'undefined':
+        #     self.movements = []
+        #     return
         if self.movements[0] == 'W':
             self.curx -= 1
         elif self.movements[0] == 'S':
@@ -278,6 +296,7 @@ class Bot(object):
         while self.mp.mp[self.homex][self.homey].tmp == tmp and trytime <= 80:
             self.get_map()
             trytime += 1
+        sleep(0.1)
         return
 
     def pre(self):  # 预处理地图
@@ -349,6 +368,52 @@ class Bot(object):
             self.preland = []
         return
 
+    def gather_army_to(self, x, y):  # 向(x, y)聚兵
+        flag = []
+        levels = [[] for _ in range(21)]
+        all_land = self.mp.findMatch(lambda a: a.belong == 1 and a.tmp > 2)
+        if not all_land:
+            return
+        amount = []
+        for i in all_land:
+            amount.append(self.mp.mp[i[0]][i[1]].tmp)
+        amount.sort()
+        avg_amount = amount[len(amount) // 2]
+        for i in range(1, self.mp.size + 1):
+            for j in range(1, self.mp.size + 1):
+                if self.mp.mp[i][j].belong == 1:
+                    if self.mp.mp[i][j].tmp >= avg_amount:
+                        levels[max(abs(i - x), abs(j - y))].append([(i, j), self.mp.mp[i][j].tmp])
+                    else:
+                        self.mp.mp[i][j].cost = 3
+        role = lambda a: a[1]
+        maxlevel = 0
+        for i in range(21):
+            if levels[i]:
+                levels[i].sort(key=role, reverse=True)
+                maxlevel = i
+        for i in range(maxlevel, -1, -1):
+            for j in levels[i]:
+                if j[0] not in flag:
+                    path = self.moveTo(x, y, j[0][0], j[0][1])
+                    if not path:
+                        continue
+                    for p in range(1, self.mp.size + 1):
+                        for q in range(1, self.mp.size + 1):
+                            if self.mp.mp[p][q].belong == 1:
+                                self.mp.mp[p][q].cost = 1
+                    return
+                    # while path:
+                    #     px = path[0][0]
+                    #     py = path[0][1]
+                    #     flag.append((px, py))
+                    #     self.mp.mp[px][py].cost = 2
+                    #     path.pop(0)
+        # for i in range(1, self.mp.size + 1):
+        #     for j in range(1, self.mp.size + 1):
+        #         if self.mp.mp[i][j].cost == 2 and self.mp.mp[i][j].belong == 1:
+        #             self.mp.mp[i][j].cost = 1
+
     def botMove(self):  # 主循环，每回合执行一次
         self.get_map()
         if not self.ispre:
@@ -357,8 +422,6 @@ class Bot(object):
         if self.movements:
             self.flushMovements()
             return
-        if [self.curx, self.cury] in self.homes and self.mp.mp[self.curx][self.cury].belong == 1:  # 已经占领的家移除
-            self.homes.remove([self.curx, self.cury])
         if [self.curx, self.cury] not in self.vis:
             self.vis.append([self.curx, self.cury])
         self.updateMap()
@@ -366,13 +429,11 @@ class Bot(object):
         if self.mp.mp[mx[0]][mx[1]].tmp <= 5:
             return
         if self.homes:  # 智能掏家
-            if self.mp.mp[mx[0]][mx[1]].tmp > 30 and self.mp.mp[mx[0]][mx[1]].type == 'general':
-                tmp = self.mp.findMax(lambda a: a.type != 'general' and a.belong == 1)
-                if self.mp.mp[tmp[0]][tmp[1]].tmp * 3 > self.mp.mp[mx[0]][mx[1]].tmp:
-                    mx = tmp
-            self.select_land(mx[0], mx[1])
             tmp = random.choice(self.homes)
-            self.moveTo(tmp[0], tmp[1])
+            if self.mp.mp[tmp[0]][tmp[1]].belong == 1:  # 已经占领的家移除
+                self.homes.remove(tmp)
+                return
+            self.gather_army_to(tmp[0], tmp[1])
             return
         tmp = self.mp.findMatchByRange(self.homex, self.homey, 1,
                                        lambda a: a.belong != 1 and (a.type == 'land' or a.type == 'city'))
@@ -614,7 +675,7 @@ class Bot(object):
             if free_time % 480 == 10 and not self.isSecret:
                 self.send_message("【提示】" + random.choice(self.tips))
             if free_time % 1000 == 999 and not self.isSecret:
-                self.driver.refresh() # 闲时自动刷新，防卡
+                self.driver.refresh()  # 闲时自动刷新，防卡
             try:
                 winner = self.driver.find_element_by_id('swal2-content').get_attribute('innerText')
                 winner = winner[0:winner.find("赢了")]
