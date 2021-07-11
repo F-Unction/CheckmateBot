@@ -1,5 +1,4 @@
 import base64
-import copy
 import datetime
 import json
 import random
@@ -20,7 +19,8 @@ from tencentcloud.common.profile.http_profile import HttpProfile
 from tencentcloud.ocr.v20181119 import ocr_client, models
 
 import api
-from map import *
+import room
+import game
 
 
 def at_player_by_uid(uid):
@@ -30,26 +30,20 @@ def at_player_by_uid(uid):
 class Bot(object):
 
     def __init__(self):
+        self.driver = webdriver.Firefox()  # 浏览器
+        # self.driver = webdriver.Chrome()
         self.kanaLink = 'https://kana.byha.top:444/'
 
         config = json.load(open("config.json", 'r'))
         self.username = config['username']  # 用户名
+        self.room = room.Room(self.driver, self.username)
         self.password = config['password']  # 密码
-        self.roomId = config['roomID']  # 房间号
+        self.room.id = config['roomID']  # 房间号
         self.secretId = config['secretId']
         self.secretKey = config['secretKey']
+        self.game = game.Game(self.driver)
 
         self.default_user_remain_win_time = 10
-
-        self.isSecret = False
-        self.isAutoReady = True
-        self.mp = Map()  # 地图
-        self.selectedMap = '1'
-        self.ondefend = False
-        self.user_count = 1
-        self.user_in_room = []
-        self.user_in_game = []
-
         self.tips = [r'在<a href="/post/16903">/post/16903</a>查看统计数据']
 
         # 以下是每日更新的数据
@@ -65,8 +59,8 @@ class Bot(object):
     def enter_room(self):
         """进入房间"""
         self.driver.get(
-            'https://kana.byha.top:444/checkmate/room/' + self.roomId)
-        if self.isSecret:
+            'https://kana.byha.top:444/checkmate/room/' + self.room.id)
+        if self.room.secret:
             settingBtn = self.driver.find_element_by_class_name(
                 'form-check-input')
             ac = ActionChains(self.driver)
@@ -74,74 +68,12 @@ class Bot(object):
         print('Bot已就位！')
         self.url = self.driver.current_url
 
-    def get_map(self):
-        """获取地图"""
-        try:
-            s = self.driver.find_element_by_id("m").get_attribute("innerHTML")
-        except:
-            return
-        stype = []
-        stmp = []
-        cnt = 0
-        while True:
-            tmp = re.search(r'class="[\s\S]*?"', s)
-            if tmp:
-                g = tmp.group()
-                g = g[7:len(g) - 1]
-                stype.append(" " + g + " ")
-                p = s.find(g)
-                s = s[p + len(g):len(s)]
-                cnt += 1
-            else:
-                break
-            tmp = re.search(r'>.*?<', s)
-            g = tmp.group()
-            g = g[1:len(g) - 1]
-            stmp.append(g)
-        self.mp.resize(int(cnt ** 0.5))
-        if self.mp.size not in [9, 10, 19, 20]:
-            return
-        for i in range(1, self.mp.size + 1):
-            for j in range(1, self.mp.size + 1):
-                p = stype[0]
-                stype.pop(0)
-                if p.find(" city ") != -1:
-                    self.mp.mp[i][j].type = 'city'
-                elif p.find(' empty-city ') != -1:
-                    self.mp.mp[i][j].type = 'empty-city'
-                elif p.find(" crown ") != -1:
-                    self.mp.mp[i][j].type = 'general'
-                elif p.find(' mountain ') != -1 or p.find(' obstacle ') != -1 or p.find(' gas ') != -1:
-                    self.mp.mp[i][j].type = 'mountain'
-                elif p.find(' null ') != -1 and p.find(' grey ') == -1:
-                    self.mp.mp[i][j].type = 'land'
-                elif p.find(' null ') != -1 and p.find(' grey ') != -1:
-                    self.mp.mp[i][j].type = 'empty'
-                else:
-                    self.mp.mp[i][j].type = 'unknown'
-                if p.find(' own ') != -1:
-                    self.mp.mp[i][j].belong = 1
-                else:
-                    self.mp.mp[i][j].belong = 0
-                p = stmp[0]
-                stmp.pop(0)
-                try:
-                    self.mp.mp[i][j].tmp = int(p)
-                except:
-                    self.mp.mp[i][j].tmp = 0
-                if self.mp.mp[i][j].belong != 1:
-                    self.mp.mp[i][j].cost = max(self.mp.mp[i][j].tmp, 2)
-                else:
-                    self.mp.mp[i][j].cost = 1
-
-        return
-
     def select_land(self, x, y):  # 选择土地
         try:
             self.driver.find_element_by_id(
-                'td-' + str((x - 1) * self.mp.size + y)).click()
-            self.curx = x
-            self.cury = y
+                'td-' + str((x - 1) * self.game.mp.size + y)).click()
+            self.game.curx = x
+            self.game.cury = y
             return
         except:
             return
@@ -174,7 +106,7 @@ class Bot(object):
         ac.send_keys_to_element(usernameBox, self.username)
         ac.send_keys_to_element(passwordBox, self.password).perform()
 
-        cap_correction = {'丫': 'Y', '了': '3'}  # 手动纠错
+        cap_correction = {'丫': 'Y', '了': '3', '尺': 'R'}  # 手动纠错
 
         while True:
             if self.driver.current_url == self.kanaLink:
@@ -241,283 +173,61 @@ class Bot(object):
         print("登录成功！")
         return
 
-    def moveTo(self, x, y, curx=0, cury=0):  # 移动
-        if curx == 0 and cury == 0:
-            curx = self.curx
-            cury = self.cury
-        path, cost = self.mp.findPath(curx, cury, x, y)
-        ans = copy.deepcopy(path)
-        if path:
-            path.pop(0)
-            cx = curx
-            cy = cury
-            self.movements.append([cx, cy])
-            while path:
-                px = path[0][0]
-                py = path[0][1]
-                if cx < px and cy == py:
-                    self.movements.append('S')
-                elif cx > px and cy == py:
-                    self.movements.append('W')
-                elif cx == px and cy > py:
-                    self.movements.append('A')
-                else:
-                    self.movements.append('D')
-                cx = px
-                cy = py
-                path.pop(0)
-        return ans
-
-    def flushMovements(self):  # 更新移动
-        tmp = self.mp.mp[self.homex][self.homey].tmp
-        curm = self.movements[0]
+    def flush_movements(self):  # 更新移动
+        tmp = self.game.mp.mp[self.game.homex][self.game.homey].tmp
+        curm = self.game.movements[0]
         while isinstance(curm, list):
             self.select_land(curm[0], curm[1])
-            self.movements.pop(0)
-            if self.movements == []:
+            self.game.movements.pop(0)
+            if not self.game.movements:
                 return
-            curm = self.movements[0]
+            curm = self.game.movements[0]
         self.send_key_to_table(curm)
-        # if self.mp.mp[self.curx][self.cury].belong != 1 and self.mp.mp[self.curx][self.cury].type != 'undefined':
-        #     self.movements = []
-        #     return
-        if self.movements[0] == 'W':
-            self.curx -= 1
-        elif self.movements[0] == 'S':
-            self.curx += 1
-        elif self.movements[0] == 'A':
-            self.cury -= 1
-        else:
-            self.cury += 1
-        self.movements.pop(0)
-        self.get_map()
-        self.updateMap()
+        if self.game.movements[0] == 'W':
+            self.game.curx -= 1
+        elif self.game.movements[0] == 'S':
+            self.game.curx += 1
+        elif self.game.movements[0] == 'A':
+            self.game.cury -= 1
+        elif self.game.movements[0] == 'D':
+            self.game.cury += 1
+        self.game.movements.pop(0)
+        self.game.get_map()
+        self.game.update_map()
         trytime = 0
-        while self.mp.mp[self.homex][self.homey].tmp == tmp and trytime <= 80:
-            self.get_map()
+        while self.game.mp.mp[self.game.homex][self.game.homey].tmp == tmp and trytime <= 80:
+            self.game.get_map()
             trytime += 1
-        sleep(0.1)
+        # if self.game.mp.mp[self.game.curx][self.game.cury].belong != 1:
+        #     self.game.movements = []
+
         return
-
-    def pre(self):  # 预处理地图
-        tmp = self.mp.findMatch(lambda a: a.type == 'general' and a.belong == 1)
-        if len(tmp) != 1:
-            return 1
-        self.homex = tmp[0][0]
-        self.homey = tmp[0][1]
-        self.curx = self.homex
-        self.cury = self.homey
-        self.movements = []
-        self.homes = []
-        self.vis = []
-        self.ispre = True  # 是否预处理
-        self.useless = []
-        self.preland = []
-        self.user_in_game = []
-
-        a = self.driver.find_element_by_id('info-content').get_attribute('innerHTML')
-        while True:  # 读取领地-兵力排行榜
-            p1 = a.find(':')
-            p2 = a.find(';')
-            if p1 == -1 or p2 == -1:
-                break
-            color = a[p1 + 2:p2]
-            a = a[p2 + 1:]
-            p1 = a.find('>')
-            p2 = a.find('<')
-            username = a[p1 + 1:p2]
-            self.user_in_game.append(username)
-        ans = ''
-        for username in self.user_in_room:
-            if username not in self.user_in_game:
-                ans += username + ','
-        if ans != '':
-            self.send_message('玩家' + ans + '未参战')
-        return 0
 
     def send_message(self, msg):  # 发送消息
         if len(msg) > 95:
             self.send_message(msg[0:95])
             self.send_message(msg[95:len(msg)])
         try:
-            messageBox = self.driver.find_element_by_id("msg-sender")
+            message_box = self.driver.find_element_by_id("msg-sender")
             ac = ActionChains(self.driver)
-            ac.send_keys_to_element(messageBox, msg)
+            ac.send_keys_to_element(message_box, msg)
             ac.send_keys(Keys.ENTER).perform()
         except:
             pass
         return
 
-    def updateMap(self):  # 分析地图
-        tmp = self.mp.findMatch(lambda a: a.type == 'general' and a.belong != 1)
-        if tmp:
-            for i in tmp:
-                if i not in self.homes:  # 找家
-                    self.homes.append(i)
-        tmp = self.mp.findMatch(lambda a: a.type != 'unknown')
-        for i in tmp:
-            if i not in self.vis:  # 已经可见的土地无需探索
-                self.vis.append(i)
-        if not self.preland:
-            self.preland = self.mp.findMatch(lambda a: a.type == 'empty' or a.belong == 1)
-        else:
-            enemy = self.mp.findMatch(lambda a: a.belong != 1)
-            for i in enemy:
-                if i in self.preland and i not in self.useless:  # 之前是空地或己方土地，现在是敌方土地，无需探索
-                    self.useless.append(i)
-            self.preland = []
-        return
-
-    def gather_army_to(self, x, y):  # 向(x, y)聚兵
-        flag = []
-        levels = [[] for _ in range(21)]
-        all_land = self.mp.findMatch(lambda a: a.belong == 1 and a.tmp > 2)
-        if not all_land:
-            return
-        amount = []
-        for i in all_land:
-            amount.append(self.mp.mp[i[0]][i[1]].tmp)
-        amount.sort()
-        avg_amount = amount[len(amount) // 2]
-        for i in range(1, self.mp.size + 1):
-            for j in range(1, self.mp.size + 1):
-                if self.mp.mp[i][j].belong == 1:
-                    if self.mp.mp[i][j].tmp >= avg_amount:
-                        levels[max(abs(i - x), abs(j - y))].append([(i, j), self.mp.mp[i][j].tmp])
-                    else:
-                        self.mp.mp[i][j].cost = 3
-        role = lambda a: a[1]
-        maxlevel = 0
-        for i in range(21):
-            if levels[i]:
-                levels[i].sort(key=role, reverse=True)
-                maxlevel = i
-        for i in range(maxlevel, -1, -1):
-            for j in levels[i]:
-                if j[0] not in flag:
-                    path = self.moveTo(x, y, j[0][0], j[0][1])
-                    if not path:
-                        continue
-                    for p in range(1, self.mp.size + 1):
-                        for q in range(1, self.mp.size + 1):
-                            if self.mp.mp[p][q].belong == 1:
-                                self.mp.mp[p][q].cost = 1
-                    return
-                    # while path:
-                    #     px = path[0][0]
-                    #     py = path[0][1]
-                    #     flag.append((px, py))
-                    #     self.mp.mp[px][py].cost = 2
-                    #     path.pop(0)
-        # for i in range(1, self.mp.size + 1):
-        #     for j in range(1, self.mp.size + 1):
-        #         if self.mp.mp[i][j].cost == 2 and self.mp.mp[i][j].belong == 1:
-        #             self.mp.mp[i][j].cost = 1
-
-    def botMove(self):  # 主循环，每回合执行一次
-        self.get_map()
-        if not self.ispre:
-            if self.pre() == 1:
-                return
-        if self.movements:
-            self.flushMovements()
-            return
-        if [self.curx, self.cury] not in self.vis:
-            self.vis.append([self.curx, self.cury])
-        self.updateMap()
-        mx = self.mp.findMax(lambda a: a.belong == 1)
-        if self.mp.mp[mx[0]][mx[1]].tmp <= 5:
-            return
-        if self.homes:  # 智能掏家
-            tmp = random.choice(self.homes)
-            if self.mp.mp[tmp[0]][tmp[1]].belong == 1:  # 已经占领的家移除
-                self.homes.remove(tmp)
-                return
-            self.gather_army_to(tmp[0], tmp[1])
-            return
-        tmp = self.mp.findMatchByRange(self.homex, self.homey, 1,
-                                       lambda a: a.belong != 1 and (a.type == 'land' or a.type == 'city'))
-        if tmp and self.mp.mp[mx[0]][mx[1]].tmp > 30:  # 智能守家
-            mx = self.mp.findMax(lambda a: a.type != 'general' and a.belong == 1)
-            self.select_land(mx[0], mx[1])
-            tmp = random.choice(tmp)
-            self.moveTo(tmp[0], tmp[1])
-            self.ondefend = True
-            return
-        if self.ondefend and dist(self.curx, self.cury, self.homex, self.homey) <= 2:
-            self.moveTo(self.homex, self.homey)
-            self.ondefend = False
-            return
-        self.ondefend = False
-        tmp = self.mp.findMatch(lambda a: a.type == 'unknown')
-        random.shuffle(tmp)
-        role = lambda a: len(self.mp.findMatchByRange(a[0], a[1], 4, lambda b: b.type == 'land' and b.belong != 1 and (
-                a not in self.useless)))
-        tmp.sort(key=role, reverse=True)
-        for i in tmp:
-            if [i[0], i[1]] not in self.vis:
-                target = i
-                break
-        owned = self.mp.findMatch(lambda a: a.belong == 1 and a.tmp >= self.mp.mp[target[0]][target[1]].tmp)
-        if not owned:
-            owned = [[self.homex, self.homey]]
-        random.shuffle(owned)
-        mindist = 10000
-        ans = []
-        for i in owned:
-            p = dist(i[0], i[1], target[0], target[1])
-            if p < self.mp.mp[i[0]][i[1]].tmp and p < mindist:
-                path, cost = self.mp.findPath(self.curx, self.cury, target[0], target[1])
-                if self.mp.mp[i[0]][i[1]].tmp >= cost:
-                    mindist = p
-                    ans = i
-        if ans:  # 探索
-            if ans[0] == self.homex and ans[1] == self.homey:
-                self.send_key_to_table('Z')
-            self.select_land(ans[0], ans[1])
-            self.moveTo(target[0], target[1])
-        return
-
-    def getUserInRoom(self):
-        a = str(api.APIGET('https://kana.byha.top:444/checkmate/room', {}))
-        ans = ''
-        uname = []
-        while True:
-            g = re.search(r'<th>[\s\S]*?</th>', a)
-            if g:
-                tmp = g.group()
-                if tmp.find(self.username) != -1 and tmp.find(r'/checkmate/room/') == -1:
-                    ans = tmp[4:len(tmp) - 5]
-                    break
-                a = a[a.find(tmp) + 1:]
-            else:
-                break
-        while True:
-            pos = ans.find(';')
-            if pos == -1 or len(uname) == 8:
-                break
-            uname.append(ans[:pos])
-            ans = ans[pos + 1:]
-        if not uname:
-            return self.user_in_room
-        else:
-            return uname
-
     def get_user_in_room(self):
         """获取房间中的玩家"""
-        self.user_in_room = []
         while True:
-            tmp = self.user_in_room
-            sleep(10)
+            sleep(5)
             if not self.on:
                 return
-            self.user_in_room = self.getUserInRoom()
-            for i in tmp:
-                if i not in self.user_in_room:
-                    self.send_message(i + '离开了房间')
-            # for i in self.user_in_room: # 由于目前Kana的相同IP特性，该功能无意义
-            #     if i not in tmp:
-            #         self.sendMessage(i + '进入了房间')
+            try:
+                self.room.get_user_in_room(api)
+            except room.UserLeaveRoom as e:
+                self.send_message(e.username + '离开了房间')
+            except room.UserEnterRoom:
+                pass
 
     def analyze(self):
         """数据分析"""
@@ -616,8 +326,6 @@ class Bot(object):
         self.user_score = {}
 
     def Main(self):
-        self.driver = webdriver.Firefox()  # 浏览器
-        # self.driver = webdriver.Chrome()
         self.login()
         self.enter_room()
         self.on = True
@@ -647,16 +355,18 @@ class Bot(object):
                 continue
             ac = ActionChains(self.driver)
             ac.send_keys(Keys.CONTROL).perform()  # 防踢
-            self.user_count = len(self.user_in_room)
             try:
                 if self.driver.find_element_by_id("game-status").get_attribute('innerHTML') != "游戏中":
                     if flag:
                         flag = False
                     sleep(0.2)
-                    self.ispre = False
+                    self.game.is_pre = False
                 else:
                     free_time = 0
-                    self.botMove()
+                    try:
+                        self.game.bot_move()
+                    except game.FlushMovements:
+                        self.flush_movements()
                     continue
                 flag = True
             except:
@@ -672,9 +382,9 @@ class Bot(object):
             except:
                 pass
             free_time += 1
-            if free_time % 480 == 10 and not self.isSecret:
+            if free_time % 480 == 10 and not self.room.secret:
                 self.send_message("【提示】" + random.choice(self.tips))
-            if free_time % 1000 == 999 and not self.isSecret:
+            if free_time % 1000 == 999 and not self.room.secret:
                 self.driver.refresh()  # 闲时自动刷新，防卡
             try:
                 winner = self.driver.find_element_by_id('swal2-content').get_attribute('innerText')
@@ -682,8 +392,8 @@ class Bot(object):
                 if winner != '':
                     ac = ActionChains(self.driver)
                     ac.send_keys(Keys.ENTER).perform()
-                    self.game_count[len(self.user_in_game)] += 1
-                    game_size = len(self.user_in_game)
+                    game_size = len(self.game.players)
+                    self.game_count[game_size] += 1
                     if game_size == 2 and winner != self.username:
                         current_win_time = self.user_remain_win_time.get(winner, self.default_user_remain_win_time)
                         self.user_remain_win_time[winner] = current_win_time - 1
@@ -698,22 +408,24 @@ class Bot(object):
                 pass
             try:
                 checkBox = self.driver.find_element_by_class_name('form-check-input')  # 防私密
-                if (checkBox.is_selected() and not self.isSecret) or (not (checkBox.is_selected()) and self.isSecret):
+                if (checkBox.is_selected() and not self.room.secret) or (
+                        not (checkBox.is_selected()) and self.room.secret):
                     checkBox.click()
-                randomBtn = self.driver.find_element_by_css_selector('[data="' + self.selectedMap + '"]')
+                randomBtn = self.driver.find_element_by_css_selector('[data="' + self.room.selected_map + '"]')
                 randomBtn.click()
             except:
                 pass
             ban = False
-            if self.user_count == 1:
+            self.room.update_room_info()
+            if self.room.available_user_count == 1:
                 ban = True
-            elif self.user_count == 2:
-                for username in self.user_in_room:
+            elif self.room.available_user_count == 2:
+                for username in self.room.users:
                     if self.user_remain_win_time.get(username, self.default_user_remain_win_time) <= 0:
                         ban = True
                         break
             try:
-                if self.isAutoReady and self.driver.find_element_by_id('ready').get_attribute(
+                if self.room.auto_ready and self.driver.find_element_by_id('ready').get_attribute(
                         'innerHTML') == '准备' and not ban:
                     ac = ActionChains(self.driver)
                     ac.click(self.driver.find_element_by_id('ready')).perform()
