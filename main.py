@@ -30,18 +30,14 @@ def at_player_by_uid(uid):
 class Bot(object):
 
     def __init__(self):
-        self.driver = webdriver.Firefox()  # 浏览器
-        # self.driver = webdriver.Chrome()
         self.kanaLink = 'https://kana.byha.top:444/'
 
         config = json.load(open("config.json", 'r'))
         self.username = config['username']  # 用户名
-        self.room = room.Room(self.driver, self.username)
         self.password = config['password']  # 密码
-        self.room.id = config['roomID']  # 房间号
+        self.room_id = config['roomID']  # 房间号
         self.secretId = config['secretId']
         self.secretKey = config['secretKey']
-        self.game = game.Game(self.driver)
 
         self.default_user_remain_win_time = 10
         self.tips = [r'在<a href="/post/16903">/post/16903</a>查看统计数据']
@@ -326,6 +322,11 @@ class Bot(object):
         self.user_score = {}
 
     def Main(self):
+        self.driver = webdriver.Firefox()  # 浏览器
+        # self.driver = webdriver.Chrome()
+        self.game = game.Game(self.driver)
+        self.room = room.Room(self.driver, self.username)
+        self.room.id = self.room_id
         self.login()
         self.enter_room()
         self.on = True
@@ -348,6 +349,9 @@ class Bot(object):
                 self.analyze()
                 self.logout()
                 self.driver.close()
+                del self.driver
+                del self.room
+                del self.game
                 return
             if self.driver.current_url != self.url:
                 self.enter_room()
@@ -417,6 +421,8 @@ class Bot(object):
                 pass
             ban = False
             self.room.update_room_info()
+            if self.room.available_user_count > self.room.total_user_count:
+                continue
             if self.room.available_user_count == 1:
                 ban = True
             elif self.room.available_user_count == 2:
