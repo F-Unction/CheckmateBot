@@ -1,9 +1,8 @@
 import base64
 import datetime
 import json
-import random
 import re
-import threading
+import time
 from time import sleep
 
 from selenium import webdriver
@@ -19,8 +18,8 @@ from tencentcloud.common.profile.http_profile import HttpProfile
 from tencentcloud.ocr.v20181119 import ocr_client, models
 
 import api
-import room
 import game
+import room
 
 
 def at_player_by_uid(uid):
@@ -40,17 +39,12 @@ class Bot(object):
         self.secretKey = config['secretKey']
 
         self.default_user_remain_win_time = 10
-        self.tips = [r'在<a href="/post/16903">/post/16903</a>查看统计数据']
+        self.last_update_time = 0
 
         # 以下是每日更新的数据
         self.user_remain_win_time = {}  # 每个玩家的单挑剩余次数
         self.game_count = []  # 每种对局的次数
         self.user_score = {}  # 每个玩家的分数
-
-    def send_key_to_table(self, key):
-        """发送按键"""
-        ac = ActionChains(self.driver)
-        ac.send_keys(key).perform()
 
     def enter_room(self):
         """进入房间"""
@@ -63,16 +57,6 @@ class Bot(object):
             ac.click(settingBtn).perform()
         print('Bot已就位！')
         self.url = self.driver.current_url
-
-    def select_land(self, x, y):  # 选择土地
-        try:
-            self.driver.find_element_by_id(
-                'td-' + str((x - 1) * self.game.mp.size + y)).click()
-            self.game.curx = x
-            self.game.cury = y
-            return
-        except:
-            return
 
     def logout(self):  # 登出
         print('正在登出…')
@@ -168,62 +152,6 @@ class Bot(object):
                 pass
         print("登录成功！")
         return
-
-    def flush_movements(self):  # 更新移动
-        tmp = self.game.mp.mp[self.game.homex][self.game.homey].tmp
-        curm = self.game.movements[0]
-        while isinstance(curm, list):
-            self.select_land(curm[0], curm[1])
-            self.game.movements.pop(0)
-            if not self.game.movements:
-                return
-            curm = self.game.movements[0]
-        self.send_key_to_table(curm)
-        if self.game.movements[0] == 'W':
-            self.game.curx -= 1
-        elif self.game.movements[0] == 'S':
-            self.game.curx += 1
-        elif self.game.movements[0] == 'A':
-            self.game.cury -= 1
-        elif self.game.movements[0] == 'D':
-            self.game.cury += 1
-        self.game.movements.pop(0)
-        self.game.get_map()
-        self.game.update_map()
-        trytime = 0
-        while self.game.mp.mp[self.game.homex][self.game.homey].tmp == tmp and trytime <= 80:
-            self.game.get_map()
-            trytime += 1
-        # if self.game.mp.mp[self.game.curx][self.game.cury].belong != 1:
-        #     self.game.movements = []
-
-        return
-
-    def send_message(self, msg):  # 发送消息
-        if len(msg) > 95:
-            self.send_message(msg[0:95])
-            self.send_message(msg[95:len(msg)])
-        try:
-            message_box = self.driver.find_element_by_id("msg-sender")
-            ac = ActionChains(self.driver)
-            ac.send_keys_to_element(message_box, msg)
-            ac.send_keys(Keys.ENTER).perform()
-        except:
-            pass
-        return
-
-    def get_user_in_room(self):
-        """获取房间中的玩家"""
-        while True:
-            sleep(5)
-            if not self.on:
-                return
-            try:
-                self.room.get_user_in_room(api)
-            except room.UserLeaveRoom as e:
-                self.send_message(e.username + '离开了房间')
-            except room.UserEnterRoom:
-                pass
 
     def analyze(self):
         """数据分析"""
@@ -332,15 +260,12 @@ class Bot(object):
         self.on = True
         self.clear_data()
         flag = False
-        ban = False
-        free_time = 0
         tmp = self.driver.get_cookies()
         for i in tmp:
             if i['name'] == 'client_session':
                 api.cookie = 'client_session=' + i['value']
                 break
         print(api.cookie)
-        threading.Thread(target=self.get_user_in_room, name="detect").start()
         while True:
             cur_time = datetime.datetime.now()
             if cur_time.hour not in range(8, 23):
@@ -366,66 +291,34 @@ class Bot(object):
                     sleep(0.2)
                     self.game.is_pre = False
                 else:
-                    free_time = 0
-                    try:
-                        self.game.bot_move()
-                    except game.FlushMovements:
-                        self.flush_movements()
+                    self.room.free_time = 0
+                    self.game.bot_move()
                     continue
                 flag = True
             except:
                 continue
             try:
-                speed = int(
-                    self.driver.find_element_by_id('settings-gamespeed-input-display').get_attribute('innerText'))
-                if speed != '4':
-                    for _ in range(4 - speed):
-                        ActionChains(self.driver).send_keys_to_element(
-                            self.driver.find_elements_by_class_name('custom-range')[0],
-                            Keys.RIGHT).perform()
-            except:
-                pass
-            free_time += 1
-            if free_time % 480 == 10 and not self.room.secret:
-                self.send_message("【提示】" + random.choice(self.tips))
-            if free_time % 1000 == 999 and not self.room.secret:
-                self.driver.refresh()  # 闲时自动刷新，防卡
-            try:
-                winner = self.driver.find_element_by_id('swal2-content').get_attribute('innerText')
-                winner = winner[0:winner.find("赢了")]
-                if winner != '':
-                    ac = ActionChains(self.driver)
-                    ac.send_keys(Keys.ENTER).perform()
-                    game_size = len(self.game.players)
-                    self.game_count[game_size] += 1
-                    if game_size == 2 and winner != self.username:
-                        current_win_time = self.user_remain_win_time.get(winner, self.default_user_remain_win_time)
-                        self.user_remain_win_time[winner] = current_win_time - 1
-                        self.send_message('剩余单挑次数' + str(current_win_time - 1) + '次')
-                    if game_size > 2:
-                        current_score = self.user_score.get(winner, 0)
-                        addition = 2 ** (game_size - 3)
-                        self.user_score[winner] = current_score + addition
-                        self.send_message(
-                            '赢家' + winner + '目前' + str(self.user_score[winner]) + '分（+' + str(addition) + '）')
-            except:
-                pass
-            try:
-                checkBox = self.driver.find_element_by_class_name('form-check-input')  # 防私密
-                if (checkBox.is_selected() and not self.room.secret) or (
-                        not (checkBox.is_selected()) and self.room.secret):
-                    checkBox.click()
-                randomBtn = self.driver.find_element_by_css_selector('[data="' + self.room.selected_map + '"]')
-                randomBtn.click()
-            except:
-                pass
+                self.room.do_something_out_of_game()
+            except room.PlayerWinAction as e:
+                winner = e.winner
+                game_size = len(self.game.players)
+                self.game_count[game_size] += 1
+                if game_size == 2 and winner != self.username:
+                    current_win_time = self.user_remain_win_time.get(winner, self.default_user_remain_win_time)
+                    self.user_remain_win_time[winner] = current_win_time - 1
+                    self.room.send_message('剩余单挑次数' + str(current_win_time - 1) + '次')
+                if game_size > 2:
+                    current_score = self.user_score.get(winner, 0)
+                    addition = 2 ** (game_size - 3)
+                    self.user_score[winner] = current_score + addition
+                    self.room.send_message(
+                        '赢家' + winner + '目前' + str(self.user_score[winner]) + '分（+' + str(addition) + '）')
             ban = False
-            self.room.update_room_info()
-            if self.room.available_user_count > self.room.total_user_count:
-                continue
             if self.room.available_user_count == 1:
                 ban = True
             elif self.room.available_user_count == 2:
+                sleep(1)
+                self.room.get_user_in_room(api)
                 for username in self.room.users:
                     if self.user_remain_win_time.get(username, self.default_user_remain_win_time) <= 0:
                         ban = True
