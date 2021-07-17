@@ -266,12 +266,13 @@ class Bot(object):
                 api.cookie = 'client_session=' + i['value']
                 break
         print(api.cookie)
+        ban_time = 0
         while True:
             cur_time = datetime.datetime.now()
             if cur_time.hour not in range(8, 23):
                 self.on = False
                 self.driver.get('https://kana.byha.top:444/')
-                self.analyze()
+                # self.analyze()
                 self.logout()
                 self.driver.close()
                 del self.driver
@@ -307,6 +308,8 @@ class Bot(object):
                     current_win_time = self.user_remain_win_time.get(winner, self.default_user_remain_win_time)
                     self.user_remain_win_time[winner] = current_win_time - 1
                     self.room.send_message('剩余单挑次数' + str(current_win_time - 1) + '次')
+                    if current_win_time <= 1:
+                        ban_time = time.time()
                 if game_size > 2:
                     current_score = self.user_score.get(winner, 0)
                     addition = 2 ** (game_size - 3)
@@ -317,12 +320,14 @@ class Bot(object):
             if self.room.available_user_count == 1:
                 ban = True
             elif self.room.available_user_count == 2:
-                sleep(1)
-                self.room.get_user_in_room(api)
-                for username in self.room.users:
-                    if self.user_remain_win_time.get(username, self.default_user_remain_win_time) <= 0:
-                        ban = True
-                        break
+                if time.time() - ban_time < 600:
+                    ban = True
+                # sleep(1)
+                # self.room.get_user_in_room(api)
+                # for username in self.room.users:
+                #     if self.user_remain_win_time.get(username, self.default_user_remain_win_time) <= 0:
+                #         ban = True
+                #         break
             try:
                 if self.room.auto_ready and self.driver.find_element_by_id('ready').get_attribute(
                         'innerHTML') == '准备' and not ban:
