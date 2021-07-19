@@ -5,18 +5,18 @@ def dist(xx1, yy1, xx2, yy2):
     return abs(xx1 - xx2) + abs(yy1 - yy2)
 
 
-dir = [[-1, 0], [0, 1], [1, 0], [0, -1]]
+dir_list = [[-1, 0], [0, 1], [1, 0], [0, -1]]
 
 
 class Node:
-    def __init__(self, tmp=0, belong=0, type='land'):
-        self.tmp = tmp
+    def __init__(self, amount=0, belong=0, type='land'):
+        self.amount = amount
         self.belong = belong  # 1 ...
         self.type = type  # land city general unknown mountain empty empty-city
         self.cost = 0
 
 
-def distRouteNode(a, b):
+def dist_node(a, b):
     return dist(a[0], a[1], b[0], b[1])
 
 
@@ -28,16 +28,16 @@ class Map:
     def __init__(self):
         self.resize(20)
 
-    def getNeighbours(self, a):  # 获取邻居
+    def get_neighbours(self, a):  # 获取邻居
         tmp = []
-        for i in dir:
+        for i in dir_list:
             px = a[0] + i[0]
             py = a[1] + i[1]
             if 1 <= px <= self.size and 1 <= py <= self.size and self.mp[px][py].type != 'mountain':
                 tmp.append((px, py))
         return tmp
 
-    def AStar(self, start, goal):  # https://blog.csdn.net/adamshan/article/details/79945175
+    def a_star(self, start, goal):  # https://blog.csdn.net/adamshan/article/details/79945175
         frontier = PriorityQueue()
         frontier.put((0, start))
         came_from = {}
@@ -48,13 +48,13 @@ class Map:
             current = frontier.get()[1]
             if current == goal:
                 break
-            for next in self.getNeighbours(current):
-                new_cost = cost_so_far[current] + self.mp[next[0]][next[1]].cost
-                if next not in cost_so_far or new_cost < cost_so_far[next]:
-                    cost_so_far[next] = new_cost
-                    priority = new_cost + distRouteNode(goal, next)
-                    frontier.put((priority, next))
-                    came_from[next] = current
+            for nxt in self.get_neighbours(current):
+                new_cost = cost_so_far[current] + self.mp[nxt[0]][nxt[1]].cost
+                if nxt not in cost_so_far or new_cost < cost_so_far[nxt]:
+                    cost_so_far[nxt] = new_cost
+                    priority = new_cost + dist_node(goal, nxt)
+                    frontier.put((priority, nxt))
+                    came_from[nxt] = current
         current = goal
         path = []
         while current != start:
@@ -64,13 +64,13 @@ class Map:
         path.reverse()
         return path, cost_so_far[goal]
 
-    def findPath(self, sx, sy, ex, ey):  # 查找路径
+    def find_path(self, sx, sy, ex, ey):  # 查找路径
         if self.mp[sx][sy].type == 'mountain' or self.mp[ex][ey].type == 'mountain':
             return []
-        path, cost = self.AStar((sx, sy), (ex, ey))
+        path, cost = self.a_star((sx, sy), (ex, ey))
         return path, cost
 
-    def findMatch(self, flt):  # 查找所有满足flt的格子
+    def find_match(self, flt):  # 查找所有满足flt的格子
         tmp = []
         for i in range(1, self.size):
             for j in range(1, self.size):
@@ -78,17 +78,17 @@ class Map:
                     tmp.append([i, j])
         return tmp
 
-    def findMax(self, flt):  # 查找满足flt的格子中兵力最大的
-        x = self.findMatch(flt)
-        maxx = 0
+    def find_max(self, flt):  # 查找满足flt的格子中兵力最大的
+        x = self.find_match(flt)
+        max_amount = 0
         ans = []
         for i in x:
-            if self.mp[i[0]][i[1]].tmp > maxx:
-                maxx = self.mp[i[0]][i[1]].tmp
+            if self.mp[i[0]][i[1]].amount > max_amount:
+                max_amount = self.mp[i[0]][i[1]].amount
                 ans = i
         return ans
 
-    def findMatchByRange(self, x, y, rg, flt):  # 在(x, y)的rg范围内查找所有满足flt的格子
+    def find_match_by_range(self, x, y, rg, flt):  # 在(x, y)的rg范围内查找所有满足flt的格子
         tmp = []
         for i in range(x - rg, x + rg + 1):
             for j in range(y - rg, y + rg + 1):

@@ -21,16 +21,16 @@ class Game(object):
         self.driver = driver
         self.mp = Map()
         self.players = []
-        self.homex = 0
-        self.homey = 0
-        self.curx = 0
-        self.cury = 0
+        self.home_x = 0
+        self.home_y = 0
+        self.cur_x = 0
+        self.cur_y = 0
         self.movements = []
         self.homes = []
         self.vis = []
         self.is_pre = False  # 是否预处理
         self.useless = []
-        self.preland = []
+        self.land_before = []
         self.players = []
         self.defending = False
 
@@ -82,28 +82,28 @@ class Game(object):
                 p = node_tmp[0]
                 node_tmp.pop(0)
                 try:
-                    self.mp.mp[i][j].tmp = int(p)
+                    self.mp.mp[i][j].amount = int(p)
                 except ValueError:
-                    self.mp.mp[i][j].tmp = 0
+                    self.mp.mp[i][j].amount = 0
                 if self.mp.mp[i][j].belong != 1:
-                    self.mp.mp[i][j].cost = max(self.mp.mp[i][j].tmp, 2)
+                    self.mp.mp[i][j].cost = max(self.mp.mp[i][j].amount, 2)
                 else:
                     self.mp.mp[i][j].cost = 1
 
     def pre(self):  # 预处理地图
-        tmp = self.mp.findMatch(lambda a: a.type == 'general' and a.belong == 1)
+        tmp = self.mp.find_match(lambda a: a.type == 'general' and a.belong == 1)
         if len(tmp) != 1:
             return 1
-        self.homex = tmp[0][0]
-        self.homey = tmp[0][1]
-        self.curx = self.homex
-        self.cury = self.homey
+        self.home_x = tmp[0][0]
+        self.home_y = tmp[0][1]
+        self.cur_x = self.home_x
+        self.cur_y = self.home_y
         self.movements = []
         self.homes = []
         self.vis = []
         self.is_pre = True
         self.useless = []
-        self.preland = []
+        self.land_before = []
         self.players = []
         self.defending = False
 
@@ -121,16 +121,16 @@ class Game(object):
             self.players.append(username)
         return 0
 
-    def move_to(self, x, y, curx=0, cury=0):  # 移动
-        if curx == 0 and cury == 0:
-            curx = self.curx
-            cury = self.cury
-        path, cost = self.mp.findPath(curx, cury, x, y)
+    def move_to(self, x, y, cur_x=0, cur_y=0):  # 移动
+        if cur_x == 0 and cur_y == 0:
+            cur_x = self.cur_x
+            cur_y = self.cur_y
+        path, cost = self.mp.find_path(cur_x, cur_y, x, y)
         ans = copy.deepcopy(path)
         if path:
             path.pop(0)
-            cx = curx
-            cy = cury
+            cx = cur_x
+            cy = cur_y
             self.movements.append([cx, cy])
             while path:
                 px = path[0][0]
@@ -149,66 +149,58 @@ class Game(object):
         return ans
 
     def update_map(self):  # 分析地图
-        tmp = self.mp.findMatch(lambda a: a.type == 'general' and a.belong != 1)
+        tmp = self.mp.find_match(lambda a: a.type == 'general' and a.belong != 1)
         if tmp:
             for i in tmp:
                 if i not in self.homes:  # 找家
                     self.homes.append(i)
-        tmp = self.mp.findMatch(lambda a: a.type != 'unknown')
+        tmp = self.mp.find_match(lambda a: a.type != 'unknown')
         for i in tmp:
             if i not in self.vis:  # 已经可见的土地无需探索
                 self.vis.append(i)
-        if not self.preland:
-            self.preland = self.mp.findMatch(lambda a: a.type == 'empty' or a.belong == 1)
+        if not self.land_before:
+            self.land_before = self.mp.find_match(lambda a: a.type == 'empty' or a.belong == 1)
         else:
-            enemy = self.mp.findMatch(lambda a: a.belong != 1)
+            enemy = self.mp.find_match(lambda a: a.belong != 1)
             for i in enemy:
-                if i in self.preland and i not in self.useless:  # 之前是空地或己方土地，现在是敌方土地，无需探索
+                if i in self.land_before and i not in self.useless:  # 之前是空地或己方土地，现在是敌方土地，无需探索
                     self.useless.append(i)
-            self.preland = []
+            self.land_before = []
         return
 
     def gather_army_to(self, x, y):  # 向(x, y)聚兵
-        flag = []
         levels = [[] for _ in range(21)]
-        all_land = self.mp.findMatch(lambda a: a.belong == 1 and a.tmp > 2 and a.type == 'land')
+        all_land = self.mp.find_match(lambda a: a.belong == 1 and a.amount > 2 and a.type == 'land')
         if not all_land:
             return
         amount = []
         for i in all_land:
-            amount.append(self.mp.mp[i[0]][i[1]].tmp)
+            amount.append(self.mp.mp[i[0]][i[1]].amount)
         amount.sort()
         avg_amount = amount[len(amount) // 2]
         for i in range(1, self.mp.size + 1):
             for j in range(1, self.mp.size + 1):
                 if self.mp.mp[i][j].belong == 1:
-                    if self.mp.mp[i][j].tmp >= avg_amount:
-                        levels[max(abs(i - x), abs(j - y))].append([(i, j), self.mp.mp[i][j].tmp])
+                    if self.mp.mp[i][j].amount >= avg_amount:
+                        levels[max(abs(i - x), abs(j - y))].append([(i, j), self.mp.mp[i][j].amount])
                     else:
                         self.mp.mp[i][j].cost = 2.1
         role = lambda a: a[1]
-        maxlevel = 0
+        max_level = 0
         for i in range(21):
             if levels[i]:
                 levels[i].sort(key=role, reverse=True)
-                maxlevel = i
-        for i in range(maxlevel, -1, -1):
+                max_level = i
+        for i in range(max_level, -1, -1):
             for j in levels[i]:
-                if j[0] not in flag:
-                    path = self.move_to(x, y, j[0][0], j[0][1])
-                    if not path:
-                        continue
-                    for p in range(1, self.mp.size + 1):
-                        for q in range(1, self.mp.size + 1):
-                            if self.mp.mp[p][q].belong == 1:
-                                self.mp.mp[p][q].cost = 1
+                if self.move_to(x, y, j[0][0], j[0][1]):
                     return
 
     def get_target(self):  # 寻找一个可行的扩张目标
-        tmp = self.mp.findMatch(lambda a: a.type == 'unknown')
+        tmp = self.mp.find_match(lambda a: a.type == 'unknown')
         target = []
         random.shuffle(tmp)
-        role = lambda a: len(self.mp.findMatchByRange(a[0], a[1], 4, lambda b: b.type == 'land' and b.belong != 1 and (
+        role = lambda a: len(self.mp.find_match_by_range(a[0], a[1], 4, lambda b: b.type == 'land' and b.belong != 1 and (
                 b not in self.useless)))
         tmp.sort(key=role, reverse=True)
         for i in tmp:
@@ -223,8 +215,8 @@ class Game(object):
         try:
             self.driver.find_element_by_id(
                 'td-' + str((x - 1) * self.mp.size + y)).click()
-            self.curx = x
-            self.cury = y
+            self.cur_x = x
+            self.cur_y = y
             return
         except:
             return
@@ -235,32 +227,30 @@ class Game(object):
         ac.send_keys(key).perform()
 
     def flush_movements(self):  # 更新移动
-        tmp = self.mp.mp[self.homex][self.homey].tmp
-        curm = self.movements[0]
-        while isinstance(curm, list):
-            self.select_land(curm[0], curm[1])
+        tmp = self.mp.mp[self.home_x][self.home_y].amount
+        cur_movement = self.movements[0]
+        while isinstance(cur_movement, list):
+            self.select_land(cur_movement[0], cur_movement[1])
             self.movements.pop(0)
             if not self.movements:
                 return
-            curm = self.movements[0]
-        self.send_key_to_table(curm)
+            cur_movement = self.movements[0]
+        self.send_key_to_table(cur_movement)
         if self.movements[0] == 'W':
-            self.curx -= 1
+            self.cur_x -= 1
         elif self.movements[0] == 'S':
-            self.curx += 1
+            self.cur_x += 1
         elif self.movements[0] == 'A':
-            self.cury -= 1
+            self.cur_y -= 1
         elif self.movements[0] == 'D':
-            self.cury += 1
+            self.cur_y += 1
         self.movements.pop(0)
         self.get_map()
         self.update_map()
-        trytime = 0
-        while self.mp.mp[self.homex][self.homey].tmp == tmp and trytime <= 80:
+        try_time = 0
+        while self.mp.mp[self.home_x][self.home_y].amount == tmp and try_time <= 80:
             self.get_map()
-            trytime += 1
-        # if self.mp.mp[self.curx][self.cury].belong != 1:
-        #     self.movements = []
+            try_time += 1
         return
 
     def bot_move(self):  # 主循环，每回合执行一次
@@ -271,11 +261,11 @@ class Game(object):
         if self.movements:
             self.flush_movements()
             return
-        if [self.curx, self.cury] not in self.vis:
-            self.vis.append([self.curx, self.cury])
+        if [self.cur_x, self.cur_y] not in self.vis:
+            self.vis.append([self.cur_x, self.cur_y])
         self.update_map()
-        mx = self.mp.findMax(lambda a: a.belong == 1)
-        if self.mp.mp[mx[0]][mx[1]].tmp < 2:
+        mx = self.mp.find_max(lambda a: a.belong == 1)
+        if self.mp.mp[mx[0]][mx[1]].amount < 2:
             return
         if self.homes:  # 智能掏家
             tmp = random.choice(self.homes)
@@ -284,35 +274,36 @@ class Game(object):
                 return
             self.gather_army_to(tmp[0], tmp[1])
             return
-        tmp = self.mp.findMatchByRange(self.homex, self.homey, 1,
-                                       lambda a: a.belong != 1 and (a.type == 'land' or a.type == 'city'))
-        if tmp and self.mp.mp[mx[0]][mx[1]].tmp > 30:  # 智能守家
-            mx = self.mp.findMax(lambda a: a.belong == 1)
+        tmp = self.mp.find_match_by_range(self.home_x, self.home_y, 1,
+                                          lambda a: a.belong != 1 and (a.type == 'land' or a.type == 'city'))
+        if tmp and self.mp.mp[mx[0]][mx[1]].amount > 30:  # 智能守家
             tmp = random.choice(tmp)
+            self.mp.mp[self.home_x][self.home_y].cost = 10000
             self.move_to(tmp[0], tmp[1], mx[0], mx[1])
             self.defending = True
             return
-        if self.defending and dist(self.curx, self.cury, self.homex, self.homey) <= 2:
-            self.gather_army_to(self.homex, self.homey)
+        if self.defending and dist(self.cur_x, self.cur_y, self.home_x, self.home_y) <= 2:
+            self.move_to(self.home_x, self.home_y)
+            self.gather_army_to(self.home_x, self.home_y)
             self.defending = False
             return
         self.defending = False
         target = self.get_target()
-        owned = self.mp.findMatch(lambda a: a.belong == 1 and a.tmp >= self.mp.mp[target[0]][target[1]].tmp)
+        owned = self.mp.find_match(lambda a: a.belong == 1 and a.amount >= self.mp.mp[target[0]][target[1]].amount)
         if not owned:
-            owned = [[self.homex, self.homey]]
+            owned = [[self.home_x, self.home_y]]
         random.shuffle(owned)
-        mindist = 10000
+        min_dist = 10000
         ans = []
         for i in owned:
             p = dist(i[0], i[1], target[0], target[1])
-            if p < self.mp.mp[i[0]][i[1]].tmp and p < mindist:
-                path, cost = self.mp.findPath(self.curx, self.cury, target[0], target[1])
-                if self.mp.mp[i[0]][i[1]].tmp >= cost:
-                    mindist = p
+            if p < self.mp.mp[i[0]][i[1]].amount and p < min_dist:
+                path, cost = self.mp.find_path(self.cur_x, self.cur_y, target[0], target[1])
+                if self.mp.mp[i[0]][i[1]].amount >= cost:
+                    min_dist = p
                     ans = i
         if ans:  # 探索
-            if ans[0] == self.homex and ans[1] == self.homey:
+            if ans[0] == self.home_x and ans[1] == self.home_y:
                 self.movements.append('Z')
             self.move_to(target[0], target[1], ans[0], ans[1])
         return

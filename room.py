@@ -30,7 +30,7 @@ class Room(object):
         self.tips = [r'在<a href="/post/16903">/post/16903</a>查看统计数据']
 
     def get_user_in_room(self, api):
-        html = str(api.APIGET('https://kana.byha.top:444/checkmate/room', {}))
+        html = str(api.get('https://kana.byha.top:444/checkmate/room', {}))
         ans = ''
         self.users = []
         while True:

@@ -109,12 +109,12 @@ class Bot(object):
 
             try:
                 cred = credential.Credential(self.secretId, self.secretKey)
-                httpProfile = HttpProfile()
-                httpProfile.endpoint = 'ocr.tencentcloudapi.com'
+                http_profile = HttpProfile()
+                http_profile.endpoint = 'ocr.tencentcloudapi.com'
 
-                clientProfile = ClientProfile()
-                clientProfile.httpProfile = httpProfile
-                client = ocr_client.OcrClient(cred, 'ap-shanghai', clientProfile)
+                client_profile = ClientProfile()
+                client_profile.httpProfile = http_profile
+                client = ocr_client.OcrClient(cred, 'ap-shanghai', client_profile)
 
                 req = models.GeneralBasicOCRRequest()
                 params = {
@@ -159,14 +159,14 @@ class Bot(object):
         uid = 1
         max_uid = 1
         while True:
-            info = api.GetUserInfoByUid(uid)
+            info = api.get_user_info_by_uid(uid)
             if info == '数据库错误':
                 if uid <= 3800:
                     uid += 1
                     continue
                 else:
                     break
-            exp = api.GetUserExpByUid(uid)
+            exp = api.get_user_exp_by_uid(uid)
             analyze_data[uid] = {}
             analyze_data[uid]['info'] = info
             analyze_data[uid]['exp'] = exp
@@ -241,7 +241,7 @@ class Bot(object):
                 ans += at_player_by_uid(i) + ' '
                 cnt += 1
         ans += '\n\n共' + str(cnt) + '个'
-        api.UpdatePost(16903, ans)
+        api.update_post(16903, ans)
 
     def clear_data(self):
         """清除每日数据"""
@@ -249,7 +249,7 @@ class Bot(object):
         self.game_count = [0, 0, 0, 0, 0, 0, 0, 0, 0]
         self.user_score = {}
 
-    def Main(self):
+    def main(self):
         self.driver = webdriver.Firefox()  # 浏览器
         # self.driver = webdriver.Chrome()
         self.game = game.Game(self.driver)
@@ -346,7 +346,7 @@ def main():
     while True:
         cur_time = datetime.datetime.now()
         if cur_time.hour in range(8, 23):
-            a.Main()
+            a.main()
         sleep(60)
 
 
