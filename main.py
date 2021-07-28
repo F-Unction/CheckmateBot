@@ -2,7 +2,6 @@ import base64
 import datetime
 import json
 import re
-import time
 from time import sleep
 
 from selenium import webdriver
@@ -317,8 +316,13 @@ class Bot(object):
             if self.room.available_user_count == 1:
                 ban = True
             elif self.room.available_user_count == 2:
+                if self.driver.find_element_by_id('ready').get_attribute('innerHTML') == '取消准备':
+                    ac = ActionChains(self.driver)
+                    ac.click(self.driver.find_element_by_id('ready')).perform()
                 self.room.get_user_in_room(api)
                 sleep(1)
+                if self.room.total_user_count < self.room.available_user_count:
+                    continue
                 for username in self.room.users:
                     if self.user_remain_win_time.get(username, self.default_user_remain_win_time) <= 0:
                         ban = True
