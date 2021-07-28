@@ -168,33 +168,78 @@ class Game(object):
             self.land_before = []
         return
 
-    def gather_army_to(self, x, y):  # 向(x, y)聚兵
-        levels = [[] for _ in range(21)]
-        all_land = self.mp.find_match(lambda a: a.belong == 1 and a.amount > 2 and a.type == 'land')
-        if not all_land:
-            return
-        amount = []
-        for i in all_land:
-            amount.append(self.mp.mp[i[0]][i[1]].amount)
-        amount.sort()
-        avg_amount = amount[len(amount) // 2]
-        for i in range(1, self.mp.size + 1):
-            for j in range(1, self.mp.size + 1):
-                if self.mp.mp[i][j].belong == 1:
-                    if self.mp.mp[i][j].amount >= avg_amount:
-                        levels[max(abs(i - x), abs(j - y))].append([(i, j), self.mp.mp[i][j].amount])
+    def gather_army_to(self, x, y, method='ring'):  # 向(x, y)聚兵
+        if method == 'ring':
+            levels = [[] for _ in range(21)]
+            all_land = self.mp.find_match(lambda a: a.belong == 1 and a.amount > 2 and a.type == 'land')
+            if not all_land:
+                return
+            amount = []
+            for i in all_land:
+                amount.append(self.mp.mp[i[0]][i[1]].amount)
+            amount.sort()
+            avg_amount = amount[len(amount) // 2]
+            for i in range(1, self.mp.size + 1):
+                for j in range(1, self.mp.size + 1):
+                    if self.mp.mp[i][j].belong == 1:
+                        if self.mp.mp[i][j].amount >= avg_amount:
+                            levels[max(abs(i - x), abs(j - y))].append([(i, j), self.mp.mp[i][j].amount])
+                        else:
+                            self.mp.mp[i][j].cost = 2.1
+            role = lambda a: a[1]
+            max_level = 0
+            for i in range(21):
+                if levels[i]:
+                    levels[i].sort(key=role, reverse=True)
+                    max_level = i
+            for i in range(max_level, -1, -1):
+                for j in levels[i]:
+                    if self.move_to(x, y, j[0][0], j[0][1]):
+                        return
+        if method == 'tree':
+            available = []
+            all_land = self.mp.find_match(lambda a: a.belong == 1 and a.amount > 2 and a.type == 'land')
+            if not all_land:
+                return
+            amount = []
+            for i in all_land:
+                amount.append(self.mp.mp[i[0]][i[1]].amount)
+            amount.sort()
+            avg_amount = amount[len(amount) // 2]
+            for i in range(1, self.mp.size + 1):
+                for j in range(1, self.mp.size + 1):
+                    if self.mp.mp[i][j].belong == 1:
+                        if self.mp.mp[i][j].amount >= avg_amount:
+                            cnt = 0
+                            neighbours = self.mp.get_neighbours([i, j])
+                            for k in neighbours:
+                                if self.mp.mp[k[0]][k[1]].belong == 1:
+                                    cnt += 1
+                                if cnt > 1:
+                                    break
+                            if cnt == 1:
+                                available.append([i, j])
+                        else:
+                            self.mp.mp[i][j].cost = 2.1
                     else:
-                        self.mp.mp[i][j].cost = 2.1
-        role = lambda a: a[1]
-        max_level = 0
-        for i in range(21):
-            if levels[i]:
-                levels[i].sort(key=role, reverse=True)
-                max_level = i
-        for i in range(max_level, -1, -1):
-            for j in levels[i]:
-                if self.move_to(x, y, j[0][0], j[0][1]):
-                    return
+                        self.mp.mp[i][j].cost = 1000000
+            max_amount = 0
+            ans = []
+            for i in available:
+                path, cost = self.mp.find_path(i[0], i[1], x, y)
+                cnt = 0
+                for j in path:
+                    if self.mp.mp[j[0]][j[1]].belong == 1:
+                        cnt += self.mp.mp[j[0]][j[1]].amount
+                    else:
+                        cnt -= self.mp.mp[j[0]][j[1]].amount
+                if cnt > max_amount:
+                    max_amount = cnt
+                    ans = i
+            if not ans:
+                return
+            self.move_to(x, y, ans[0], ans[1])
+
 
     def get_target(self):  # 寻找一个可行的扩张目标
         tmp = self.mp.find_match(lambda a: a.type == 'unknown')

@@ -55,7 +55,7 @@ class Room(object):
         try:
             self.available_user_count = int(self.driver.find_element_by_id('total-user').text)
             self.ready_user_count = int(self.driver.find_element_by_id('ready-user').text)
-        except ValueError:
+        except:
             self.available_user_count = 1
             self.ready_user_count = 1
 

@@ -317,8 +317,8 @@ class Bot(object):
             if self.room.available_user_count == 1:
                 ban = True
             elif self.room.available_user_count == 2:
-                sleep(1)
                 self.room.get_user_in_room(api)
+                sleep(1)
                 for username in self.room.users:
                     if self.user_remain_win_time.get(username, self.default_user_remain_win_time) <= 0:
                         ban = True
