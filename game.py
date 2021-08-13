@@ -121,6 +121,17 @@ class Game(object):
             self.players.append(username)
         return 0
 
+    def short_move(self, cx, cy, px, py):
+        """直接从(cx, cy)移动到相邻的(px, py)"""
+        if cx < px and cy == py:
+            return 'S'
+        elif cx > px and cy == py:
+            return 'W'
+        elif cx == px and cy > py:
+            return 'A'
+        else:
+            return 'D'
+
     def move_to(self, x, y, cur_x=0, cur_y=0):  # 移动
         if cur_x == 0 and cur_y == 0:
             cur_x = self.cur_x
@@ -135,14 +146,7 @@ class Game(object):
             while path:
                 px = path[0][0]
                 py = path[0][1]
-                if cx < px and cy == py:
-                    self.movements.append('S')
-                elif cx > px and cy == py:
-                    self.movements.append('W')
-                elif cx == px and cy > py:
-                    self.movements.append('A')
-                else:
-                    self.movements.append('D')
+                self.movements.append(self.short_move(cx, cy, px, py))
                 cx = px
                 cy = py
                 path.pop(0)
@@ -168,7 +172,7 @@ class Game(object):
             self.land_before = []
         return
 
-    def gather_army_to(self, x, y, method='ring'):  # 向(x, y)聚兵
+    def gather_army_to(self, x, y, method='rectangle'):  # 向(x, y)聚兵
         if method == 'ring':
             levels = [[] for _ in range(21)]
             all_land = self.mp.find_match(lambda a: a.belong == 1 and a.amount > 2 and a.type == 'land')
@@ -239,14 +243,105 @@ class Game(object):
             if not ans:
                 return
             self.move_to(x, y, ans[0], ans[1])
-
+        if method == 'rectangle':
+            a = [[-9999999 for i in range(self.mp.size + 2)] for j in range(self.mp.size + 2)]
+            for i in range(1, self.mp.size + 1):
+                for j in range(1, self.mp.size + 1):
+                    if self.mp.mp[i][j].belong == 1:
+                        a[i][j] = self.mp.mp[i][j].amount - 1
+            ans_top_left = (0, 0)
+            ans_bottom_right = (0, 0)
+            best_sum = 0
+            for start_row in range(1, self.mp.size + 1):  # 最大子矩阵和
+                tmp = [0 for _ in range(self.mp.size + 2)]
+                for end_row in range(start_row, self.mp.size + 1):
+                    cur_sum = 0
+                    best_col = 1
+                    for end_col in range(1, self.mp.size + 1):
+                        tmp[end_col] += a[end_row][end_col]
+                        if cur_sum >= 0:
+                            cur_sum += tmp[end_col]
+                        else:
+                            cur_sum = tmp[end_col]
+                            best_col = end_col
+                        if cur_sum > best_sum:
+                            ans_top_left = (start_row, best_col)
+                            ans_bottom_right = (end_row, end_col)
+                            best_sum = cur_sum
+            ans_top_right = (ans_top_left[0], ans_bottom_right[1])
+            ans_bottom_left = (ans_bottom_right[0], ans_top_left[1])
+            ans = [ans_top_left, ans_top_right, ans_bottom_left, ans_bottom_right]
+            print(ans, best_sum)
+            tmp = []
+            target_node = (x, y)
+            for i in ans:
+                tmp.append([i, dist_node(i, target_node)])
+            role = lambda p: p[1]
+            tmp.sort(key=role)
+            end_node = tmp[0][0]
+            flag = ((ans_bottom_left[0] - ans_top_left[0]) % 2) == 1  # 奇同偶异
+            start_node = (0, 0)
+            if end_node == ans_top_left:
+                if flag:
+                    start_node = ans_bottom_left
+                else:
+                    start_node = ans_bottom_right
+            if end_node == ans_top_right:
+                if flag:
+                    start_node = ans_bottom_right
+                else:
+                    start_node = ans_bottom_left
+            if end_node == ans_bottom_left:
+                if flag:
+                    start_node = ans_top_left
+                else:
+                    start_node = ans_top_right
+            if end_node == ans_bottom_right:
+                if flag:
+                    start_node = ans_top_right
+                else:
+                    start_node = ans_top_left
+            cx = start_node[0]
+            cy = start_node[1]
+            self.movements.append(start_node)
+            if start_node == ans_top_left or start_node == ans_bottom_left:
+                cur_dir = True  # 是否向右
+            else:
+                cur_dir = False
+            if start_node[0] < end_node[0]:
+                dx = 1  # 每次改变的x
+            else:
+                dx = -1
+            min_y = min(ans_top_left[1], ans_top_right[1])
+            max_y = max(ans_top_left[1], ans_top_right[1])
+            while cx != end_node[0] or cy != end_node[1]:  # 蛇形遍历
+                print(cx, cy)
+                px = cx
+                py = cy
+                if cur_dir:
+                    py += 1
+                else:
+                    py -= 1
+                if py < min_y:
+                    px += dx
+                    py = min_y
+                    cur_dir = not cur_dir
+                if py > max_y:
+                    px += dx
+                    py = max_y
+                    cur_dir = not cur_dir
+                self.movements.append(self.short_move(cx, cy, px, py))
+                cx = px
+                cy = py
+            self.move_to(x, y, end_node[0], end_node[1])
 
     def get_target(self):  # 寻找一个可行的扩张目标
         tmp = self.mp.find_match(lambda a: a.type == 'unknown')
         target = []
         random.shuffle(tmp)
-        role = lambda a: len(self.mp.find_match_by_range(a[0], a[1], 4, lambda b: b.type == 'land' and b.belong != 1 and (
-                b not in self.useless)))
+        role = lambda a: len(
+            self.mp.find_match_by_range(a[0], a[1], 4, lambda b: b.type == 'land' and b.belong != 1 and (
+                    b not in self.useless)))
         tmp.sort(key=role, reverse=True)
         for i in tmp:
             if [i[0], i[1]] not in self.vis:
@@ -274,7 +369,7 @@ class Game(object):
     def flush_movements(self):  # 更新移动
         tmp = self.mp.mp[self.home_x][self.home_y].amount
         cur_movement = self.movements[0]
-        while isinstance(cur_movement, list):
+        while isinstance(cur_movement, list) or isinstance(cur_movement, tuple):
             self.select_land(cur_movement[0], cur_movement[1])
             self.movements.pop(0)
             if not self.movements:
